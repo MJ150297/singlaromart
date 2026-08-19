@@ -1,0 +1,179 @@
+# Cloudinary Implementation Guide
+
+**Status:** ✅ Fully Implemented  
+**Date:** 2026-08-10
+
+---
+
+## Overview
+
+This document describes how Cloudinary is integrated into the Indiyano website — how images are uploaded, stored, optimized, and cleaned up.
+
+---
+
+## How It Works
+
+### Upload Flow
+
+```
+Admin UI (ImageUpload component)
+    ↓  POST /api/upload (multipart/form-data: file, alt, folder)
+    ↓  Auth guard (requireOwner) + Rate limiting (20/min, 200/hr per IP)
+    ↓  File validation (type: jpeg/png/webp/gif, size: max 5MB)
+    ↓  uploadBufferToCloudinary() in src/lib/cloudinary.ts
+    ↓  Cloudinary SDK upload_stream
+    ↓  Cloudinary CDN
+    ↓  Returns CloudinaryImage object
+    ↓  Stored in MongoDB (Product/Banner/Category document)
+```
+
+### Folder Structure
+
+Images are organized into an enterprise folder hierarchy on Cloudinary:
+
+```
+indiyano/
+├── products/            # Product main + gallery images
+├── banners/             # Hero carousel banner images
+├── categories/          # Category main images
+└── subcategories/       # Subcategory images
+```
+
+Each upload generates a **unique public_id** (`<timestamp>-<random>`, e.g. `1725840827341-4f8a2c`) to prevent filename collisions. The `overwrite` flag is **not** used.
+
+### Image Optimization
+
+Every image is automatically optimized via transformation presets:
+
+| Preset | Dimensions | Transformations |
+|--------|-----------|-----------------|
+| `thumbnail` | 300×300 | `c_fill, gravity_auto, f_auto, q_auto` |
+| `card` | 500×500 | `c_fill, gravity_auto, f_auto, q_auto` |
+| `detail` | 800×800 | `c_fill, gravity_auto, f_auto, q_auto` |
+| `zoom` | 1200×1200 | `c_fill, gravity_auto, f_auto, q_auto` |
+
+**Optimization techniques:**
+- `f_auto` — serves the best format (WebP/AVIF) based on the browser
+- `q_auto` — auto-quality balancing file size and visual fidelity
+- `c_fill` — crops to fill the exact dimensions
+- `gravity_auto` — subject-aware cropping (keeps faces/important regions)
+
+All four transformation URLs are generated on upload and stored in the `CloudinaryImage` object.
+
+### CloudinaryImage Data Structure
+
+```typescript
+{
+  publicId: "indiyano/products/1725840827341-4f8a2c",
+  url: "https://res.cloudinary.com/.../image/upload/...",
+  secureUrl: "https://res.cloudinary.com/.../image/upload/...",
+  width: 800,
+  height: 800,
+  alt: "Basmati Rice",
+  transformations: {
+    thumbnail: "https://res.cloudinary.com/.../w_300,h_300,c_fill.../...",
+    card: "https://res.cloudinary.com/.../w_500,h_500,c_fill.../...",
+    detail: "https://res.cloudinary.com/.../w_800,h_800,c_fill.../...",
+    zoom: "https://res.cloudinary.com/.../w_1200,h_1200,c_fill.../..."
+  }
+}
+```
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `src/lib/cloudinary.ts` | Core utility: upload, delete, URL building, folder constants |
+| `src/app/api/upload/route.ts` | Upload API endpoint with auth + rate limiting |
+| `src/components/ui/image-upload.tsx` | Client-side upload component |
+| `src/lib/schemas.ts` | Zod `CloudinaryImageSchema` |
+| `src/lib/models/Product.ts` | Mongoose Product schema (Mixed image field) |
+| `src/lib/models/Banner.ts` | Mongoose Banner schema |
+| `src/lib/models/Category.ts` | Mongoose Category schema |
+| `next.config.ts` | Remote patterns for `res.cloudinary.com` |
+
+---
+
+## Security & Rate Limiting
+
+### Upload Endpoint (`POST /api/upload`)
+
+1. **Authentication:** Requires `owner` role via `requireOwner()` — unauthenticated uploads are rejected with 401/403.
+2. **Rate limiting:** Uses MongoDB-backed rate limiter (`src/lib/rateLimit.ts`):
+   - **20 uploads per minute** per IP
+   - **200 uploads per hour** per IP
+   - Returns 429 with retry message on exceed
+3. **File validation:**
+   - Allowed types: `image/jpeg`, `image/png`, `image/webp`, `image/gif`
+   - Max size: 5MB
+4. **Folder validation:** The `folder` field is validated against the `CLOUDINARY_FOLDERS` allowlist to prevent arbitrary path injection.
+
+---
+
+## Cascade Cleanup (Update & Delete)
+
+### Update (PUT) — Diff-based deletion
+
+When an entity is updated, the system compares old vs new Cloudinary images and deletes only the images that are **no longer referenced**:
+
+```
+Old images (from DB)  →  collectPublicIds()
+New images (from body) →  collectPublicIds()
+toDelete = oldIds - newIds  →  deleteCloudinaryImages(toDelete)
+```
+
+**Products:** Compares main image + gallery images.  
+**Categories:** Compares main image + all subcategory images.  
+**Banners:** Compares the single banner image.
+
+### Delete (DELETE) — Full cascade
+
+When an entity is deleted, **all its Cloudinary images are also deleted**:
+
+| Entity | Images Deleted |
+|--------|---------------|
+| Product | Main image + all gallery images |
+| Category | Main image + all subcategory images |
+| Banner | Banner image |
+
+### Failure Handling
+
+- **DB is the source of truth.** If Cloudinary deletion fails, the entity is still updated/deleted (no orphaned DB records).
+- Failed deletions are returned as `warnings` in the API response and displayed as amber warning banners in the admin UI.
+- A future background job could retry failed deletions.
+
+---
+
+## Environment Variables
+
+```env
+CLOUDINARY_CLOUD_NAME=demo
+CLOUDINARY_API_KEY=123456789
+CLOUDINARY_API_SECRET=secret_key_here
+```
+
+---
+
+## Admin UI Integration
+
+Each admin page passes the appropriate `folder` prop to `ImageUpload`:
+
+| Page | Folder |
+|------|--------|
+| Products (main + gallery) | `products` |
+| Categories (main) | `categories` |
+| Categories (subcategories) | `subcategories` |
+| Banners | `banners` |
+
+---
+
+## Remaining Gaps / Future Enhancements
+
+- [ ] Background retry job for failed Cloudinary deletions
+- [ ] Migration script for legacy string image URLs (deferred)
+- [ ] Image analytics (views, engagement)
+- [ ] Signed URLs for private images
+- [ ] Batch uploads for multiple images
+- [ ] AI-powered alt text generation
