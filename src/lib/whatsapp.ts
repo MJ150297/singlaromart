@@ -3,6 +3,13 @@ import { CustomerDetails } from "./schemas";
 
 const WHATSAPP_BUSINESS_NUMBER = "919876543210"; // Replace with store WhatsApp number
 
+export function generateWhatsAppHelpUrl(orderId?: string): string {
+  const message = orderId
+    ? `Hi Indiyano! I need help with my order ${orderId}.`
+    : "Hi Indiyano! I need help with my order.";
+  return `https://wa.me/${WHATSAPP_BUSINESS_NUMBER}?text=${encodeURIComponent(message)}`;
+}
+
 export function generateWhatsAppOrderUrl(
   items: CartItem[],
   customer: CustomerDetails

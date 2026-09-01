@@ -1,12 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { ShoppingBag, Package } from "lucide-react";
-import { useSession } from "next-auth/react";
+import { ShoppingBag } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/store";
 import { toggleCartDrawer } from "@/store/slices/cartSlice";
 import { ThemeToggle } from "./ThemeToggle";
 import { SearchBar } from "./SearchBar";
+import { ProfileMenu } from "./ProfileMenu";
 
 interface HeaderProps {
   searchQuery: string;
@@ -14,9 +13,6 @@ interface HeaderProps {
 }
 
 export function Header({ searchQuery, onSearchChange }: HeaderProps) {
-  const { data: session } = useSession();
-  const isAuthenticated = Boolean(session?.user);
-
   const dispatch = useAppDispatch();
   const { items } = useAppSelector((state) => state.cart);
   const itemCount = items.reduce((acc, item) => acc + item.quantity, 0);
@@ -46,19 +42,8 @@ export function Header({ searchQuery, onSearchChange }: HeaderProps) {
         {/* Search Bar */}
         <SearchBar searchQuery={searchQuery} onSearchChange={onSearchChange} />
 
-        {/* Right side: Orders, Theme toggle & Cart */}
+        {/* Right side: Theme toggle, Cart & Profile */}
         <div className="flex items-center gap-1 shrink-0">
-          {isAuthenticated && (
-            <Link
-              href="/orders"
-              className="hidden md:flex items-center gap-1.5 p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors dark:text-slate-400 dark:hover:bg-slate-800"
-              title="My Orders"
-            >
-              <Package className="w-5 h-5" />
-              <span className="text-xs font-medium">Orders</span>
-            </Link>
-          )}
-
           <ThemeToggle />
 
           <button
@@ -72,18 +57,8 @@ export function Header({ searchQuery, onSearchChange }: HeaderProps) {
             </span>
           </button>
 
-          {/* Mobile cart icon */}
-          <button
-            onClick={() => dispatch(toggleCartDrawer(true))}
-            className="relative md:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors dark:text-slate-400 dark:hover:bg-slate-800"
-          >
-            <ShoppingBag className="h-5 w-5" />
-            {itemCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 bg-emerald-600 text-white text-[9px] font-bold rounded-full h-4 w-4 flex items-center justify-center">
-                {itemCount > 9 ? "9+" : itemCount}
-              </span>
-            )}
-          </button>
+          {/* Profile menu - rightmost */}
+          <ProfileMenu />
         </div>
       </div>
     </header>

@@ -5,7 +5,11 @@ import { Plus, Minus } from "lucide-react";
 import { Product } from "@/lib/schemas";
 import ProductImage from "./ProductImage";
 import { useAppDispatch, useAppSelector } from "@/store";
-import { addToCart, updateQuantity } from "@/store/slices/cartSlice";
+import {
+  addToCart,
+  removeFromCart,
+  updateQuantity,
+} from "@/store/slices/cartSlice";
 
 interface ProductCardProps {
   product: Product;
@@ -85,12 +89,14 @@ export function ProductCard({ product }: ProductCardProps) {
           <div className="flex items-center bg-emerald-600 text-white rounded-lg p-0.5">
             <button
               onClick={() =>
-                dispatch(
-                  updateQuantity({
-                    id: product.id,
-                    quantity: qty - 1,
-                  })
-                )
+                qty === 1
+                  ? dispatch(removeFromCart(product.id))
+                  : dispatch(
+                      updateQuantity({
+                        id: product.id,
+                        quantity: qty - 1,
+                      })
+                    )
               }
               className="p-1 hover:bg-emerald-700 rounded-md transition-colors"
             >

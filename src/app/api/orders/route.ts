@@ -19,7 +19,13 @@ const CreateOrderSchema = z.object({
 export async function POST(req: Request) {
   try {
     const session = await auth();
-    const userId = session?.user?.id;
+    if (!session?.user?.id) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Please login to place an order." }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    const userId = session.user.id;
 
     const body = await req.json();
     const payload = CreateOrderSchema.parse(body);

@@ -293,12 +293,13 @@ Click **"+ Add Offer"** and fill in:
 | Field | Required | Description | Example |
 |-------|----------|-------------|---------|
 | **Offer Name** | ✅ | Title shown above the carousel | `Summer Trends` |
-| **Slug** | ❌ | URL-friendly identifier | `summer-trends` |
+| **Slug** | ❌ | URL-friendly identifier (auto-generated from name) | `summer-trends` |
 | **Sort Order** | ❌ | Display priority (0 = first) | `0` |
 | **Description** | ❌ | Short subtitle shown above the carousel | `Refreshing picks for the hot season` |
-| **Selection Type** | ✅ | How products are chosen (Tag or Manual) | `By Tag` |
+| **Selection Type** | ✅ | How products are chosen (Tag, Category, or Manual) | `By Tag` |
 | **Tag** | ✅ (if Tag) | Product tag that auto-selects products | `summer` |
-| **Products** | ✅ (if Manual) | Hand-picked product list | — |
+| **Category** | ✅ (if Category) | Category that auto-selects products | `Vegetables` |
+| **Products** | ✅ (if Manual) | Hand-picked product list (with load-more) | — |
 | **Banner Image** | ❌ | Optional banner image | `/images/offer.jpg` |
 | **Start Date** | ❌ | When the offer becomes visible | `2026-06-01 00:00` |
 | **End Date** | ❌ | When the offer stops being visible | `2026-08-31 23:59` |
@@ -309,7 +310,32 @@ Click **"+ Add Offer"** and fill in:
 | Type | Behavior |
 |------|----------|
 | **🏷️ By Tag** | Auto-includes **all published products** carrying the given tag. Type a tag (with autocomplete from existing product tags). |
-| **👆 Manual** | Hand-pick **exact products** from a searchable list. The selected order is preserved. |
+| **📂 By Category** | Auto-includes **all published products** in the selected category. |
+| **👆 Manual** | Hand-pick **exact products** from a searchable, paginated list. The selected order is preserved. |
+
+### Enterprise Features
+
+The offers page includes several enterprise-grade capabilities:
+
+- **Summary stat cards** — Active / Scheduled / Expired / Inactive counts at a glance.
+- **Search & filters** — Search by name, filter by type (tag/category/manual) and status.
+- **Pagination** — Offers are paginated (25 per page) for large catalogs.
+- **Reorder** — Use the up/down arrows on each offer to change display order without editing.
+- **Duplicate** — Copy an existing offer (as inactive) to quickly spin up a similar campaign.
+- **Product-count preview** — Tag/category offers show how many products will appear.
+- **Offer preview** — Preview the carousel before saving.
+- **Toasts & confirmations** — Success/error toasts and a styled delete confirmation dialog.
+- **Auto-slug** — Slug auto-generates from the name (editable override).
+- **Date validation** — Inline error if the end date is before the start date.
+
+### Security & Validation
+
+- All offer payloads are **field-whitelisted** server-side (no arbitrary data injection).
+- **Server-side validation** enforces name, type consistency, `endsAt >= startsAt`, and sort order.
+- **Slug uniqueness** is enforced (case-insensitive).
+- **Duplicate detection** rejects an active offer that reuses the same tag or category.
+- **Rate limiting** protects create/update/delete endpoints.
+- An **audit trail** (`createdBy`/`updatedBy`) records who made each change.
 
 ### Scheduling & Visibility
 

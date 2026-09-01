@@ -22,35 +22,41 @@ export async function GET(request: Request) {
       100
     );
 
-    // Build query
+    // Build query. Each query parameter is an independent AND condition;
+    // $or is used only for alternatives within a single parameter.
     const query: Record<string, unknown> = { isPublished: true };
-    const orConditions: Record<string, unknown>[] = [];
+    const andConditions: Record<string, unknown>[] = [];
+
     if (category && category !== "all") {
       const catLower = category.toLowerCase();
-      orConditions.push(
-        { categoryId: category },
-        { category: { $regex: new RegExp(`^${catLower}$`, "i") } }
-      );
+      andConditions.push({
+        $or: [
+          { categoryId: category },
+          { category: { $regex: new RegExp(`^${catLower}$`, "i") } },
+        ],
+      });
     }
     if (subcategory) {
-      orConditions.push({
+      andConditions.push({
         subcategories: { $regex: new RegExp(`^${subcategory}$`, "i") },
       });
     }
     if (subcategoryId) {
-      orConditions.push({ subcategoryId });
+      andConditions.push({ subcategoryId });
     }
     if (search) {
       const q = search.toLowerCase();
-      orConditions.push(
-        { name: { $regex: new RegExp(q, "i") } },
-        { tags: { $regex: new RegExp(q, "i") } },
-        { description: { $regex: new RegExp(q, "i") } },
-        { category: { $regex: new RegExp(q, "i") } }
-      );
+      andConditions.push({
+        $or: [
+          { name: { $regex: new RegExp(q, "i") } },
+          { tags: { $regex: new RegExp(q, "i") } },
+          { description: { $regex: new RegExp(q, "i") } },
+          { category: { $regex: new RegExp(q, "i") } },
+        ],
+      });
     }
-    if (orConditions.length > 0) {
-      query.$or = orConditions;
+    if (andConditions.length > 0) {
+      query.$and = andConditions;
     }
     if (inStock === "true") {
       query.inStock = true;

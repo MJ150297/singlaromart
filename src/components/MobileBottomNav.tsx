@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Home, Grid3X3, Tag, ShoppingBag, Package, LogOut } from "lucide-react";
+import { Home, ShoppingBag, Package } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useAppSelector, useAppDispatch } from "@/store";
 import { toggleCartDrawer } from "@/store/slices/cartSlice";
@@ -15,9 +15,7 @@ export function MobileBottomNav() {
 
   const navItems = [
     { id: "home", label: "Home", icon: Home, active: true, href: "/" },
-    { id: "categories", label: "Categories", icon: Grid3X3, active: false, href: "/" },
     { id: "orders", label: "Orders", icon: Package, active: false, href: "/orders", condition: isAuthenticated },
-    { id: "offers", label: "Offers", icon: Tag, active: false, href: "/" },
     {
       id: "cart",
       label: "Cart",

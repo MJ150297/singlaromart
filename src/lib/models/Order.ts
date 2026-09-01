@@ -27,6 +27,17 @@ const CustomerSchema = new Schema(
   { _id: false }
 );
 
+// ─── Status history sub-schema (audit trail) ──────────────────────────────────
+const StatusHistorySchema = new Schema(
+  {
+    status: { type: String, required: true },
+    changedAt: { type: Date, default: Date.now },
+    changedBy: { type: String },
+    note: String,
+  },
+  { _id: false }
+);
+
 // ─── Order schema ─────────────────────────────────────────────────────────────
 const OrderSchema = new Schema(
   {
@@ -42,6 +53,19 @@ const OrderSchema = new Schema(
       default: "pending",
       index: true,
     },
+    // Payment tracking
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid", "failed"],
+      default: "pending",
+      index: true,
+    },
+    // Admin internal notes
+    internalNotes: { type: String, default: "" },
+    // Delivery notes / instructions
+    deliveryNotes: { type: String, default: "" },
+    // Audit trail of status changes
+    statusHistory: { type: [StatusHistorySchema], default: [] },
     estimatedDelivery: { type: Date },
     createdAt: { type: Date, default: Date.now },
     updatedAt: { type: Date, default: Date.now },

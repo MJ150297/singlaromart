@@ -4,6 +4,10 @@ import bcrypt from "bcryptjs";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { User, UserDocument } from "@/lib/models/User";
 import { checkRateLimit, clearRateLimit, getClientIp } from "@/lib/rateLimit";
+import {
+  normalizeIndianMobile,
+  verifyOtp,
+} from "@/lib/otp";
 import type { NextAuthConfig } from "next-auth";
 import type { JWT } from "@auth/core/jwt";
 
@@ -13,9 +17,6 @@ const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 
 // Session durations
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days (remember me)
-// Note: No updateAge is set so that the manual `token.exp` override for
-// "don't remember me" sessions (24h) is not overwritten by a token refresh.
-// The jwt callback still runs on every request for tokenVersion checks.
 
 // Extend the built-in types
 declare module "next-auth" {
@@ -23,8 +24,10 @@ declare module "next-auth" {
     role?: string;
     tokenVersion?: number;
     rememberMe?: boolean;
+    phone?: string;
+    displayEmail?: string;
   }
-  interface Session {
+      interface Session {
     user: {
       id?: string;
       name?: string | null;
@@ -32,6 +35,8 @@ declare module "next-auth" {
       image?: string | null;
       role?: string;
       rememberMe?: boolean;
+      phone?: string;
+      displayEmail?: string;
     };
   }
 }
@@ -42,7 +47,20 @@ declare module "@auth/core/jwt" {
     role?: string;
     tokenVersion?: number;
     rememberMe?: boolean;
+    phone?: string;
+    displayEmail?: string;
   }
+}
+
+async function checkLoginRateLimit(req: Request | undefined) {
+  if (!req) return null;
+  const ip = getClientIp(req);
+  return checkRateLimit({
+    key: "login",
+    identifier: ip,
+    limit: LOGIN_LIMIT,
+    windowMs: LOGIN_WINDOW_MS,
+  });
 }
 
 export const authConfig: NextAuthConfig = {
@@ -52,31 +70,107 @@ export const authConfig: NextAuthConfig = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        mobile: { label: "Mobile", type: "text" },
+        otp: { label: "OTP", type: "text" },
         rememberMe: { label: "Remember Me", type: "checkbox" },
       },
       async authorize(credentials, request) {
-        if (!credentials?.email || !credentials?.password) {
-          console.warn("[auth] Missing email or password");
-          throw new Error("MissingCredentials");
-        }
-
-        const email = (credentials.email as string).toLowerCase();
-        const rememberMe = credentials.rememberMe === "true" || credentials.rememberMe === true;
-
         try {
-          // Rate limit login attempts by IP
-          const ip = getClientIp(request as unknown as Request);
-          console.log(`[auth] Login attempt for ${email} from IP ${ip}`);
+          // ─── Phone + OTP (customer flow) ────────────────────────────────
+          if (credentials?.mobile || credentials?.otp) {
+            const rawMobile = String(credentials.mobile ?? "");
+            const otp = String(credentials.otp ?? "");
+            const mobile = normalizeIndianMobile(rawMobile);
 
-          const rateLimited = await checkRateLimit({
-            key: "login",
-            identifier: ip,
-            limit: LOGIN_LIMIT,
-            windowMs: LOGIN_WINDOW_MS,
-          });
-          if (rateLimited) {
-            console.warn(`[auth] Rate limited for IP ${ip}: ${rateLimited}`);
-            throw new Error("RateLimited");
+            if (!mobile) {
+              throw new Error("InvalidMobile");
+            }
+
+            const rateLimited = await checkLoginRateLimit(
+              request as unknown as Request
+            );
+            if (rateLimited) {
+              console.warn(`[auth] Rate limited OTP login for ${mobile}`);
+              throw new Error("RateLimited");
+            }
+
+            const verify = await verifyOtp(mobile, otp);
+            if (!verify.ok) {
+              const code =
+                verify.message.startsWith("Too many")
+                  ? "TooManyOtpAttempts"
+                  : "InvalidOtp";
+              throw new Error(code);
+            }
+
+            await connectToDatabase();
+
+            // Atomic find-or-create by phone (upsert) so concurrent first-time
+            // logins for the same number never create duplicate accounts.
+            const user = await User.findOneAndUpdate(
+              { phone: mobile },
+              {
+                $setOnInsert: {
+                  name: "Customer " + mobile.slice(-4),
+                  phone: mobile,
+                  phoneVerified: true,
+                  role: "customer",
+                  tokenVersion: 0,
+                },
+              },
+              {
+                upsert: true,
+                returnDocument: "after",
+                lean: true,
+              }
+            );
+
+            if (!user) {
+              console.warn(`[auth] Unexpected: no user after upsert for ${mobile}`);
+              throw new Error("ServerError");
+            }
+
+            if (!(user as UserDocument).phoneVerified) {
+              await User.updateOne(
+                { phone: mobile },
+                { $set: { phoneVerified: true } }
+              );
+            }
+
+            return {
+              id: String((user as { _id: unknown })._id),
+              name: (user as UserDocument).name as string,
+              role: (user as UserDocument).role as string,
+              tokenVersion: (user as UserDocument).tokenVersion ?? 0,
+              rememberMe: true,
+              phone: (user as UserDocument).phone as string,
+              displayEmail: (user as UserDocument).displayEmail as string,
+            };
+          }
+
+          // ── Email + password (admin/owner flow) ─────────────────────────
+          if (!credentials?.email || !credentials?.password) {
+            console.warn("[auth] Missing email or password");
+            throw new Error("MissingCredentials");
+          }
+
+          const email = (credentials.email as string).toLowerCase();
+          const rememberMe =
+            credentials.rememberMe === "true" ||
+            credentials.rememberMe === true;
+
+          if (request) {
+            const ip = getClientIp(request as unknown as Request);
+            const rateLimited = await checkRateLimit({
+              key: "login",
+              identifier: ip,
+              limit: LOGIN_LIMIT,
+              windowMs: LOGIN_WINDOW_MS,
+            });
+            if (rateLimited) {
+              console.warn(`[auth] Rate limited for IP ${ip}: ${rateLimited}`);
+              throw new Error("RateLimited");
+            }
           }
 
           await connectToDatabase();
@@ -88,11 +182,9 @@ export const authConfig: NextAuthConfig = {
             throw new Error("InvalidCredentials");
           }
 
-          console.log(`[auth] User found: ${user.email}, role: ${user.role}`);
-
           const isValid = await bcrypt.compare(
             credentials.password as string,
-            user.password as string
+            (user as UserDocument).password as string
           );
 
           if (!isValid) {
@@ -100,29 +192,35 @@ export const authConfig: NextAuthConfig = {
             throw new Error("InvalidCredentials");
           }
 
-          console.log(`[auth] Password valid for email: ${email}`);
-
-          // On successful login, clear any rate limit entries for this IP
-          await clearRateLimit({
-            key: "login",
-            identifier: ip,
-          });
+          if (request) {
+            const ip = getIp(request as unknown as Request);
+            await clearRateLimit({
+              key: "login",
+              identifier: ip,
+            });
+          }
 
           return {
-            id: String(user._id),
-            name: user.name as string,
-            email: user.email as string,
-            role: user.role as string,
-            tokenVersion: user.tokenVersion ?? 0,
+            id: String((user as { _id: unknown })._id),
+            name: (user as UserDocument).name as string,
+            email: (user as UserDocument).email as string,
+            role: (user as UserDocument).role as string,
+            tokenVersion: (user as UserDocument).tokenVersion ?? 0,
             rememberMe,
+            phone: (user as UserDocument).phone as string,
+            displayEmail: (user as UserDocument).displayEmail as string,
           };
         } catch (error) {
-          // Re-throw our known auth errors so the client can show specific messages
           if (
             error instanceof Error &&
-            ["MissingCredentials", "InvalidCredentials", "RateLimited"].includes(
-              error.message
-            )
+            [
+              "MissingCredentials",
+              "InvalidCredentials",
+              "RateLimited",
+              "InvalidMobile",
+              "InvalidOtp",
+              "TooManyOtpAttempts",
+            ].includes(error.message)
           ) {
             throw error;
           }
@@ -133,7 +231,7 @@ export const authConfig: NextAuthConfig = {
     }),
   ],
   pages: {
-    signIn: "/admin/login",
+    signIn: "/login",
   },
   session: {
     strategy: "jwt",
@@ -151,17 +249,28 @@ export const authConfig: NextAuthConfig = {
     },
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.role = user.role ?? "customer";
         token.tokenVersion = user.tokenVersion ?? 0;
         token.rememberMe = user.rememberMe ?? true;
+        token.phone = user.phone;
+        token.displayEmail = user.displayEmail;
 
         // If "remember me" is not checked, expire the session in 24 hours
         if (!token.rememberMe) {
           token.exp = Math.floor(Date.now() / 1000) + 24 * 60 * 60;
         }
+      }
+
+      if (trigger === "update" && session) {
+        // `useSession().update(data)` sends data at the top level. Accept the
+        // nested shape too for compatibility with callers that send user data.
+        const profile = session.user ?? session;
+        if ("name" in profile && profile.name !== undefined) token.name = profile.name;
+        if ("email" in profile) token.email = profile.email ?? undefined;
+        if ("displayEmail" in profile) token.displayEmail = profile.displayEmail ?? undefined;
       }
 
       // Session revocation: check if the user's tokenVersion has changed
@@ -171,7 +280,6 @@ export const authConfig: NextAuthConfig = {
           const dbUser = await User.findById(token.id).select("tokenVersion").lean();
           const dbTokenVersion = (dbUser as UserDocument | null)?.tokenVersion ?? 0;
           if (dbTokenVersion !== token.tokenVersion) {
-            // Token version mismatch - session has been revoked
             return {};
           }
         } catch (error) {
@@ -186,10 +294,16 @@ export const authConfig: NextAuthConfig = {
         session.user.id = token.id ?? "";
         session.user.role = token.role ?? "customer";
         session.user.rememberMe = token.rememberMe ?? true;
+        session.user.phone = token.phone;
+        session.user.displayEmail = token.displayEmail;
       }
       return session;
     },
   },
 };
+
+function getIp(req: Request): string {
+  return getClientIp(req);
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);

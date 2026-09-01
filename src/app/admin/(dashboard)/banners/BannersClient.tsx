@@ -1,23 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { Plus, Pencil, Trash2, X, Loader2 } from "lucide-react";
+import {
+  Plus, Pencil, Trash2, Search, X, Loader2, Download, Filter,
+  CheckSquare, Square, AlertTriangle,
+  Copy, ChevronUp, ChevronDown, CheckCircle2, AlertCircle,
+} from "lucide-react";
 import { ImageUpload } from "@/components/ui";
-import { fetchApi } from "@/lib/swr";
+import { Pagination } from "@/components/Pagination";
 import type { CloudinaryImage } from "@/lib/schemas";
+import type { BannersSummary, InitialBanner } from "./page";
 
-interface Banner {
-  id: string;
-  title: string;
-  subtitle: string;
-  badge: string;
-  gradient: string;
-  cta: string;
-  image: string | CloudinaryImage;
-  order: number;
-  isActive: boolean;
-}
+type ApiResponse<T> = { success: boolean; data: T; warnings?: string[]; error?: string };
+type MutationResponse = { success: boolean; warnings?: string[]; error?: string };
+
+interface Banner extends InitialBanner {}
 
 interface BannerForm {
   id?: string;
@@ -26,37 +24,189 @@ interface BannerForm {
   badge: string;
   gradient: string;
   cta: string;
-  image: string | CloudinaryImage;
-  order: number;
+  image?: string | CloudinaryImage;
+  order: string;
   isActive: boolean;
 }
 
-const emptyForm: BannerForm = {
+interface BannersResponse {
+  items: Banner[];
+  total: number;
+  page: number;
+  limit: number;
+  summary?: BannersSummary;
+}
+
+interface Toast {
+  id: number;
+  type: "success" | "error";
+  message: string;
+}
+
+const GRADIENTS = [
+  { value: "from-emerald-500 to-teal-600", label: "Emerald → Teal" },
+  { value: "from-orange-500 to-rose-600", label: "Orange → Rose" },
+  { value: "from-blue-500 to-indigo-600", label: "Blue → Indigo" },
+  { value: "from-purple-500 to-pink-600", label: "Purple → Pink" },
+  { value: "from-amber-500 to-orange-600", label: "Amber → Orange" },
+  { value: "from-cyan-500 to-blue-600", label: "Cyan → Blue" },
+  { value: "from-rose-500 to-red-600", label: "Rose → Red" },
+  { value: "from-lime-500 to-green-600", label: "Lime → Green" },
+];
+
+const emptyForm = (order: string): BannerForm => ({
   title: "",
   subtitle: "",
   badge: "",
   gradient: "from-emerald-500 to-teal-600",
   cta: "",
   image: "",
-  order: 0,
+  order,
   isActive: true,
-};
+});
 
-export default function BannersClient({ initialBanners }: { initialBanners: Banner[] }) {
-  const { data, error, mutate } = useSWR<Banner[]>('/admin/banners', () => fetchApi<Banner[]>('/admin/banners').then((arr) => arr ?? []), { fallbackData: initialBanners });
+function formatDate(dateStr?: string): string {
+  if (!dateStr) return "-";
+  return new Date(dateStr).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export default function BannersClient({ initialBanners, initialSummary }: { initialBanners: Banner[]; initialSummary: BannersSummary | null }) {
+  // ─── Search, filters & pagination ─────────────────────────────────────
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("order");
+  const [sortOrder, setSortOrder] = useState("asc");
+  const [showFilters, setShowFilters] = useState(false);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
+
+  // ─── Selection & bulk actions ─────────────────────────────────────────
+  const [selected, setSelected] = useState<string[]>([]);
+  const [bulkAction, setBulkAction] = useState("");
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  // ─── Toasts (multiple, top-right) ─────────────────────────────────────
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastId = useRef(0);
+
+  // ─── Per-row loading (toggle / reorder) ───────────────────────────────
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // ─── Reorder animation ────────────────────────────────────────────────
+  const [animatingId, setAnimatingId] = useState<string | null>(null);
+  const animTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ─── Form state ─────────────────────────────────────────────────────────
   const [showForm, setShowForm] = useState(false);
   const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
-  const [form, setForm] = useState<BannerForm>(emptyForm);
+  const [form, setForm] = useState<BannerForm>(() => emptyForm("0"));
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [warning, setWarning] = useState("");
 
-  const banners = data || [];
-  const isLoading = !data && !error;
+  // ─── Delete confirmation state ─────────────────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<{ ids: string[]; label: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, statusFilter, sortBy, sortOrder, limit]);
+
+  const params = new URLSearchParams({ page: String(page), limit: String(limit), sortBy, sortOrder });
+  if (debouncedSearch) params.set("search", debouncedSearch);
+  if (statusFilter !== "all") params.set("isActive", statusFilter);
+
+  const bannersKey = `/api/admin/banners?${params.toString()}`;
+  const { data, isLoading, error, mutate } = useSWR<BannersResponse | null>(
+    bannersKey,
+    async (url) => {
+      const res = await fetch(url);
+      const d = (await res.json()) as ApiResponse<BannersResponse>;
+      if (!d.success) throw new Error(d.error || "Failed to load banners");
+      return d.data ?? null;
+    },
+    {
+      fallbackData: {
+        items: initialBanners,
+        total: initialBanners.length,
+        page: 1,
+        limit,
+        summary: initialSummary ?? undefined,
+      },
+      revalidateOnFocus: true,
+    }
+  );
+
+  const banners = data?.items ?? [];
+  const summary = data?.summary;
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const hasActiveFilters = debouncedSearch || statusFilter !== "all" || sortBy !== "order" || sortOrder !== "asc";
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+  function patchForm(patch: Partial<BannerForm>) {
+    setForm((prev) => ({ ...prev, ...patch }));
+  }
+
+  const pushToast = useCallback((type: Toast["type"], message: string) => {
+    const id = ++toastId.current;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  }, []);
+
+  const clearFilters = () => {
+    setSearch("");
+    setStatusFilter("all");
+    setSortBy("order");
+    setSortOrder("asc");
+    setPage(1);
+  };
+
+  const handleExportCsv = async () => {
+    try {
+      const exportParams = new URLSearchParams({ export: "csv" });
+      if (debouncedSearch) exportParams.set("search", debouncedSearch);
+      if (statusFilter !== "all") exportParams.set("isActive", statusFilter);
+      const res = await fetch(`/api/admin/banners?${exportParams.toString()}`);
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `banners-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      pushToast("success", "CSV exported successfully");
+    } catch {
+      pushToast("error", "Failed to export CSV");
+    }
+  };
+
+  const kpiCards = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Total Banners", value: summary.totalBanners, classes: "text-blue-600 dark:text-blue-400" },
+      { label: "Active", value: summary.activeCount, classes: "text-emerald-600 dark:text-emerald-400" },
+      { label: "Inactive", value: Math.max(0, summary.totalBanners - summary.activeCount), classes: "text-slate-600 dark:text-slate-400" },
+    ];
+  }, [summary]);
+
+  const inputClass = "w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100";
+  const selectClass = `${inputClass} pr-8`;
+  const labelClass = "block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1";
+
+  // ─── Form helpers ─────────────────────────────────────────────────────────
   function openCreateForm() {
     setEditingBanner(null);
-    setForm({ ...emptyForm, order: banners.length });
+    setForm(emptyForm(String(banners.length)));
     setShowForm(true);
     setErrorMsg("");
   }
@@ -71,8 +221,8 @@ export default function BannersClient({ initialBanners }: { initialBanners: Bann
       gradient: banner.gradient || "from-emerald-500 to-teal-600",
       cta: banner.cta || "",
       image: banner.image || "",
-      order: banner.order || 0,
-      isActive: banner.isActive ?? true,
+      order: String(banner.order ?? 0),
+      isActive: banner.isActive !== false,
     });
     setShowForm(true);
     setErrorMsg("");
@@ -85,7 +235,13 @@ export default function BannersClient({ initialBanners }: { initialBanners: Bann
 
     const payload = {
       ...form,
-      order: Number(form.order),
+      title: form.title.trim(),
+      subtitle: form.subtitle.trim() || undefined,
+      badge: form.badge.trim() || undefined,
+      gradient: form.gradient,
+      cta: form.cta.trim() || undefined,
+      order: Number(form.order) || 0,
+      isActive: form.isActive,
       image: typeof form.image === "string" ? form.image.trim() || undefined : form.image,
     };
 
@@ -93,26 +249,19 @@ export default function BannersClient({ initialBanners }: { initialBanners: Bann
       const url = editingBanner ? `/api/admin/banners/${editingBanner.id}` : "/api/admin/banners";
       const method = editingBanner ? "PUT" : "POST";
 
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (!data.success) {
-        setErrorMsg(data.error || "Failed to save banner");
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const responseData = (await res.json()) as MutationResponse;
+      if (!res.ok || !responseData.success) {
+        setErrorMsg(responseData.error || "Failed to save banner");
         setSaving(false);
         return;
       }
 
-      if (data.warnings?.length) {
-        setWarning(data.warnings.join(" "));
-      } else {
-        setWarning("");
-      }
+      if (responseData.warnings?.length) setWarning(responseData.warnings.join(" "));
+      else setWarning("");
 
       setShowForm(false);
+      pushToast("success", editingBanner ? "Banner updated successfully" : "Banner created successfully");
       await mutate();
     } catch (err) {
       console.error(err);
@@ -122,151 +271,396 @@ export default function BannersClient({ initialBanners }: { initialBanners: Bann
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this banner?")) return;
+  function requestDelete(ids: string[], label: string) {
+    setDeleteTarget({ ids, label });
+  }
 
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    const ids = deleteTarget.ids;
+    setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/banners/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (data.success) {
-        if (data.warnings?.length) setWarning(data.warnings.join(" "));
-        else setWarning("");
+      const results = await Promise.all(ids.map(async (id) => {
+        const res = await fetch(`/api/admin/banners/${id}`, { method: "DELETE" });
+        const responseData = (await res.json()) as MutationResponse;
+        return { ok: res.ok && responseData.success, warning: responseData.warnings?.join(" "), error: responseData.error };
+      }));
+      const failed = results.filter((r) => !r.ok);
+      const warnings = results.map((r) => r.warning).filter(Boolean);
+      if (failed.length === 0) {
+        pushToast(warnings.length ? "error" : "success", warnings.join(" ") || `${ids.length} banner${ids.length === 1 ? "" : "s"} deleted`);
+        setSelected((prev) => prev.filter((s) => !ids.includes(s)));
         await mutate();
+      } else pushToast("error", failed[0].error || `Failed to delete ${failed.length} banner${failed.length === 1 ? "" : "s"}`);
+    } catch (err) { console.error(err); pushToast("error", "Failed to delete banner"); }
+    finally { setDeleting(false); setDeleteTarget(null); }
+  }
+
+  async function handleQuickToggle(id: string, field: "isActive", value: boolean) {
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/admin/banners/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      const responseData = (await res.json()) as MutationResponse;
+      if (res.ok && responseData.success) {
+        pushToast("success", value ? "Banner activated" : "Banner deactivated");
+        await mutate();
+      } else {
+        pushToast("error", responseData.error || "Failed to update banner");
       }
+    } catch { pushToast("error", "Failed to update banner"); }
+    finally { setBusyId(null); }
+  }
+
+  async function reorder(banner: Banner, direction: "up" | "down") {
+    // Reorder within the currently displayed (paginated) list.
+    const sorted = [...(banners ?? [])].sort((a, b) => a.order - b.order);
+    const idx = sorted.findIndex((o) => o.id === banner.id);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= sorted.length) return;
+
+    const neighbor = sorted[swapIdx];
+    setBusyId(banner.id);
+    setAnimatingId(banner.id);
+    try {
+      // Swap orders
+      await Promise.all([
+        fetch(`/api/admin/banners/${banner.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order: neighbor.order }),
+        }),
+        fetch(`/api/admin/banners/${neighbor.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order: banner.order }),
+        }),
+      ]);
+      await mutate();
     } catch (err) {
       console.error(err);
+      pushToast("error", "Failed to reorder banners");
+    } finally {
+      setBusyId(null);
+      if (animTimer.current) clearTimeout(animTimer.current);
+      animTimer.current = setTimeout(() => setAnimatingId(null), 400);
     }
   }
 
-  async function toggleActive(banner: Banner) {
+  async function duplicateBanner(banner: Banner) {
+    setBusyId(banner.id);
     try {
-      const res = await fetch(`/api/admin/banners/${banner.id}`, {
-        method: "PUT",
+      const payload = {
+        title: `${banner.title} (Copy)`,
+        subtitle: banner.subtitle,
+        badge: banner.badge,
+        gradient: banner.gradient,
+        cta: banner.cta,
+        image: banner.image,
+        order: Math.max(0, ...(banners ?? []).map((b) => b.order)) + 1,
+        isActive: false,
+      };
+      const res = await fetch("/api/admin/banners", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: !banner.isActive }),
+        body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (data.success) await mutate();
+      const data = (await res.json()) as MutationResponse;
+      if (res.ok && data.success) {
+        pushToast("success", "Banner duplicated");
+        await mutate();
+      } else {
+        pushToast("error", data.error || "Failed to duplicate banner");
+      }
     } catch (err) {
       console.error(err);
+      pushToast("error", "Failed to duplicate banner");
+    } finally {
+      setBusyId(null);
     }
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
+  };
+
+  const toggleSelectAll = () => {
+    if (selected.length === banners.length && banners.length > 0) setSelected([]);
+    else setSelected(banners.map((b) => b.id));
+  };
+
+  async function handleBulkAction() {
+    if (!bulkAction || selected.length === 0) return;
+    setBulkLoading(true);
+    try {
+      if (bulkAction === "delete") {
+        requestDelete(selected, `${selected.length} selected banner${selected.length === 1 ? "" : "s"}`);
+        setBulkAction("");
+      } else {
+        const value = bulkAction === "activate" ? true : bulkAction === "deactivate" ? false : null;
+        if (value === null) { setBulkLoading(false); return; }
+        const results = await Promise.all(selected.map(async (id) => {
+          const response = await fetch(`/api/admin/banners/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isActive: value }) });
+          const responseData = (await response.json()) as MutationResponse;
+          return response.ok && responseData.success;
+        }));
+        if (results.every(Boolean)) {
+          pushToast("success", `Updated ${selected.length} banner${selected.length === 1 ? "" : "s"}`);
+          setSelected([]); setBulkAction(""); await mutate();
+        } else pushToast("error", "Some banners failed to update");
+      }
+    } catch { pushToast("error", "Failed to perform bulk action"); }
+    finally { setBulkLoading(false); }
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Toasts (top-right, multiple) */}
+      <div className="fixed top-4 right-4 z-[100] space-y-2">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${
+              t.type === "success" ? "bg-emerald-600" : "bg-rose-600"
+            }`}
+            role="status"
+          >
+            {t.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4" />
+            ) : (
+              <AlertCircle className="w-4 h-4" />
+            )}
+            {t.message}
+          </div>
+        ))}
+      </div>
+
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Banners</h1>
           <p className="text-sm text-slate-500 mt-1">Manage hero carousel banners</p>
         </div>
-        <button onClick={openCreateForm} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors flex items-center gap-2">
-          <Plus className="w-4 h-4" /> Add Banner
-        </button>
+        <div className="flex gap-2">
+          <button onClick={handleExportCsv} className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"><Download className="inline w-4 h-4 mr-1" />Export</button>
+          <button onClick={openCreateForm} className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 rounded-lg text-sm flex items-center gap-2"><Plus className="w-4 h-4" /> Add Banner</button>
+        </div>
       </div>
 
-      {errorMsg && <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-lg text-sm text-rose-600 dark:text-rose-400">{errorMsg}</div>}
-      {warning && <div className="p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-400">{warning}</div>}
+      {/* Summary stat cards (offers style) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {kpiCards.map((card) => (
+          <div key={card.label} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{card.label}</p>
+            <p className={`text-2xl font-bold mt-1 ${card.classes}`}>{card.value}</p>
+          </div>
+        ))}
+      </div>
 
-      {showForm && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{editingBanner ? "Edit Banner" : "Add Banner"}</h2>
-                <button onClick={() => setShowForm(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X className="w-4 h-4" /></button>
-              </div>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search banners" className={`${inputClass} pl-9`} aria-label="Search banners" />
+        </div>
+        <button onClick={() => setShowFilters((v) => !v)} className="px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg flex items-center gap-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+          <Filter className="w-4 h-4" /> Filters
+        </button>
+        {hasActiveFilters && (
+          <button onClick={clearFilters} className="px-3 py-2 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+            Clear
+          </button>
+        )}
+      </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Title *</label>
-                  <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required placeholder="e.g. Fresh Groceries Delivered" className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100" />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Subtitle</label>
-                  <input type="text" value={form.subtitle} onChange={(e) => setForm({ ...form, subtitle: e.target.value })} placeholder="e.g. Order before 10 AM for same-day delivery" className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Badge</label>
-                    <input type="text" value={form.badge} onChange={(e) => setForm({ ...form, badge: e.target.value })} placeholder="e.g. NEW" className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100" />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">CTA Text</label>
-                    <input type="text" value={form.cta} onChange={(e) => setForm({ ...form, cta: e.target.value })} placeholder="e.g. Shop Now" className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Gradient</label>
-                  <select value={form.gradient} onChange={(e) => setForm({ ...form, gradient: e.target.value })} className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100">
-                    <option value="from-emerald-500 to-teal-600">Emerald → Teal</option>
-                    <option value="from-orange-500 to-rose-600">Orange → Rose</option>
-                    <option value="from-blue-500 to-indigo-600">Blue → Indigo</option>
-                    <option value="from-purple-500 to-pink-600">Purple → Pink</option>
-                    <option value="from-amber-500 to-orange-600">Amber → Orange</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Banner Image</label>
-                  <ImageUpload value={form.image} label="Upload banner image" folder="banners" onUpload={(image) => setForm({ ...form, image })} onError={(message) => setErrorMsg(message)} />
-                  <p className="text-xs text-slate-400 mt-2">You can also paste a direct image URL below.</p>
-                  <input type="text" value={typeof form.image === "string" ? form.image : ""} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="/images/banner.jpg" className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100" />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Order</label>
-                    <input type="number" value={form.order} onChange={(e) => setForm({ ...form, order: Number(e.target.value) })} min="0" className="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100" />
-                  </div>
-
-                  <div className="flex items-end pb-2">
-                    <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-                      <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" />
-                      Active
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
-                  <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
-                  <button type="submit" disabled={saving} className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">{saving ? (<><Loader2 className="w-4 h-4 animate-spin" />Saving...</>) : ("Save Banner")}</button>
-                </div>
-              </form>
-            </div>
+      {/* Sorting dropdowns in a grid (offers style) */}
+      {showFilters && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+          <div>
+            <label className={labelClass}>Status</label>
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClass}>
+              <option value="all">All statuses</option>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Sort By</label>
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className={selectClass}>
+              <option value="order">Order</option>
+              <option value="title">Title</option>
+              <option value="createdAt">Created</option>
+              <option value="updatedAt">Updated</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Sort Direction</label>
+            <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className={selectClass}>
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
           </div>
         </div>
       )}
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+      {/* Bulk action bar */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-3 bg-slate-100 dark:bg-slate-800 rounded-lg">
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{selected.length} selected</span>
+          <select value={bulkAction} onChange={(e) => setBulkAction(e.target.value)} className={`${selectClass} w-auto`} aria-label="Bulk action">
+            <option value="">Bulk action</option>
+            <option value="activate">Activate</option>
+            <option value="deactivate">Deactivate</option>
+            <option value="delete">Delete</option>
+          </select>
+          <button onClick={handleBulkAction} disabled={bulkLoading || !bulkAction} className="px-3 py-2 text-sm bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors flex items-center gap-2">
+            {bulkLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+            Apply
+          </button>
         </div>
+      )}
+
+      {errorMsg && <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-lg text-sm text-rose-600 dark:text-rose-400">{errorMsg}</div>}
+      {warning && <div className="p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-700 dark:text-amber-400">{warning}</div>}
+      {error && <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-lg text-sm text-rose-600 dark:text-rose-400">Failed to load banners.</div>}
+
+      {/* Banners List */}
+      {isLoading ? (
+        <div className="py-20 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-emerald-500" /></div>
       ) : banners.length === 0 ? (
-        <div className="text-center py-16 text-slate-400"><p className="text-lg font-medium">No banners found</p><p className="text-sm mt-1">Add your first banner to get started</p></div>
+        <div className="text-center py-16 text-slate-400">
+          <p className="text-lg font-medium">No banners found</p>
+          <p className="text-sm mt-1">
+            {hasActiveFilters ? "Try adjusting your search or filters" : "Add your first banner to get started"}
+          </p>
+        </div>
       ) : (
         <div className="space-y-4">
+          <button onClick={toggleSelectAll} className="text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300">
+            {selected.length === banners.length ? (
+              <><CheckSquare className="inline w-4 h-4 mr-1" />Deselect all</>
+            ) : (
+              <><Square className="inline w-4 h-4 mr-1" />Select all</>
+            )}
+          </button>
           {banners.map((banner) => (
-            <div key={banner.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+            <div
+              key={banner.id}
+              className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-all duration-300 ${
+                animatingId === banner.id ? "scale-[0.98] border-emerald-400 shadow-lg" : ""
+              }`}
+            >
               <div className="p-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-4">
-                  <div className={`w-16 h-12 rounded-lg bg-gradient-to-r ${banner.gradient || "from-emerald-500 to-teal-600"} flex items-center justify-center text-white text-xs font-bold shrink-0`}>{banner.badge || "Banner"}</div>
-                  <div>
-                    <h3 className="font-semibold text-slate-900 dark:text-slate-100">{banner.title}</h3>
-                    <p className="text-xs text-slate-500">{banner.subtitle || "No subtitle"} · Order: {banner.order}</p>
+                <div className="flex items-center gap-4 min-w-0">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(banner.id)}
+                    onChange={() => toggleSelect(banner.id)}
+                    className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500 shrink-0"
+                    aria-label={`Select ${banner.title}`}
+                  />
+                  <div className={`w-16 h-12 rounded-lg bg-gradient-to-r ${banner.gradient} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                    {banner.badge || "Banner"}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-slate-900 dark:text-slate-100 truncate">{banner.title}</h3>
+                    <p className="text-xs text-slate-500 truncate">
+                      {banner.subtitle || "No subtitle"}
+                      {" · "}Order: {banner.order}
+                      {" · "}{formatDate(banner.createdAt)}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => toggleActive(banner)} className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors ${banner.isActive ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"}`}>{banner.isActive ? "Active" : "Inactive"}</button>
-                  <button onClick={() => openEditForm(banner)} className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => handleDelete(banner.id)} className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${banner.isActive ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"}`}>
+                    {banner.isActive ? "Active" : "Inactive"}
+                  </span>
+                  <button
+                    onClick={() => handleQuickToggle(banner.id, "isActive", !banner.isActive)}
+                    disabled={busyId === banner.id}
+                    className={`text-xs font-semibold px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 ${banner.isActive ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"}`}
+                    aria-label={banner.isActive ? "Deactivate banner" : "Activate banner"}
+                  >
+                    {busyId === banner.id ? <Loader2 className="w-3 h-3 animate-spin" /> : banner.isActive ? "On" : "Off"}
+                  </button>
+                  <div className="flex flex-col">
+                    <button onClick={() => reorder(banner, "up")} disabled={busyId === banner.id} className="p-1 text-slate-400 hover:text-emerald-600 disabled:opacity-40 transition-colors" aria-label="Move banner up">
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => reorder(banner, "down")} disabled={busyId === banner.id} className="p-1 text-slate-400 hover:text-emerald-600 disabled:opacity-40 transition-colors" aria-label="Move banner down">
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <button onClick={() => duplicateBanner(banner)} disabled={busyId === banner.id} className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-colors disabled:opacity-50" aria-label="Duplicate banner">
+                    <Copy className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => openEditForm(banner)} className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors" aria-label="Edit banner">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => requestDelete([banner.id], banner.title)} className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-colors" aria-label="Delete banner">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {totalPages > 1 && <Pagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />}
+
+      {/* Banner Form Modal */}
+      {showForm && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="banner-form-title" onKeyDown={(e) => { if (e.key === "Escape") setShowForm(false); }}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 id="banner-form-title" className="text-lg font-bold text-slate-900 dark:text-slate-100">{editingBanner ? "Edit Banner" : "Add Banner"}</h2>
+              <button onClick={() => setShowForm(false)} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Close"><X className="w-4 h-4" /></button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <input required placeholder="Title" value={form.title} onChange={(e) => patchForm({ title: e.target.value })} className={inputClass} />
+              <input placeholder="Subtitle" value={form.subtitle} onChange={(e) => patchForm({ subtitle: e.target.value })} className={inputClass} />
+              <div className="grid grid-cols-2 gap-3">
+                <input placeholder="Badge" value={form.badge} onChange={(e) => patchForm({ badge: e.target.value })} className={inputClass} />
+                <input placeholder="CTA text" value={form.cta} onChange={(e) => patchForm({ cta: e.target.value })} className={inputClass} />
+              </div>
+              <select value={form.gradient} onChange={(e) => patchForm({ gradient: e.target.value })} className={inputClass}>
+                {GRADIENTS.map((gradient) => <option key={gradient.value} value={gradient.value}>{gradient.label}</option>)}
+              </select>
+              <ImageUpload value={form.image} label="Upload banner image" folder="banners" onUpload={(image) => patchForm({ image })} onError={setErrorMsg} />
+              <input type="text" value={typeof form.image === "string" ? form.image : ""} onChange={(e) => patchForm({ image: e.target.value })} placeholder="Image URL" className={inputClass} />
+              <div className="grid grid-cols-2 gap-3">
+                <input type="number" min="0" value={form.order} onChange={(e) => patchForm({ order: e.target.value })} className={inputClass} />
+                <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300"><input type="checkbox" checked={form.isActive} onChange={(e) => patchForm({ isActive: e.target.checked })} className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500" />Active</label>
+              </div>
+              <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+                <button type="submit" disabled={saving} className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
+                  {saving ? <><Loader2 className="w-4 h-4 animate-spin" />Saving...</> : "Save Banner"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4" role="alertdialog" aria-modal="true" aria-labelledby="delete-confirm-title" onKeyDown={(e) => { if (e.key === "Escape") setDeleteTarget(null); }}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md p-6">
+            <AlertTriangle className="w-6 h-6 text-amber-500 mb-3" />
+            <h2 id="delete-confirm-title" className="text-lg font-bold text-slate-900 dark:text-slate-100">Delete Banner</h2>
+            <p className="text-sm text-slate-500 mt-2 mb-4">Delete {deleteTarget.label}? This action cannot be undone.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="flex-1 px-4 py-2.5 text-sm font-medium text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+              <button onClick={handleDelete} disabled={deleting} className="flex-1 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
+                {deleting ? <><Loader2 className="w-4 h-4 animate-spin" />Deleting...</> : "Delete"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -272,10 +272,19 @@ export interface Offer {
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/admin/offers` | List all offers (incl. inactive/expired) |
-| POST | `/api/admin/offers` | Create an offer |
-| PUT | `/api/admin/offers/:id` | Update an offer |
-| DELETE | `/api/admin/offers/:id` | Delete an offer (+ Cloudinary banner cleanup) |
+| GET | `/api/admin/offers` | List offers with pagination, search, type & status filters |
+| POST | `/api/admin/offers` | Create an offer (validated, rate-limited, audit trail) |
+| PUT | `/api/admin/offers/:id` | Update an offer (validated, rate-limited, audit trail) |
+| DELETE | `/api/admin/offers/:id` | Delete an offer (+ Cloudinary banner cleanup, rate-limited) |
+
+> **Note:** `GET /api/admin/offers` now returns a paginated envelope:
+> `{ success, data: { items, total, page, limit } }`. It supports `?page=`, `?limit=`, `?search=` (name), `?type=` (tag/category/manual), and `?status=` (active/scheduled/expired/inactive).
+>
+> **Security hardening:** All create/update payloads are field-whitelisted, server-side validated (name, type consistency, `endsAt >= startsAt`, sortOrder), auto-generate slugs with uniqueness enforcement, reject duplicate active tag/category offers, and are rate-limited. An audit trail (`createdBy`/`updatedBy`) is recorded from the owner session.
+>
+> **Public caching:** `GET /api/offers` now returns a short `Cache-Control` header (`s-maxage=60, stale-while-revalidate=300`) to reduce DB load while keeping the storefront fresh.
+>
+> **Admin UX:** The offers page now includes summary stat cards (Active/Scheduled/Expired/Inactive), search + type/status filters, pagination, up/down reordering, duplicate-offer action, product-count previews for tag/category offers, toast notifications, a custom delete confirmation dialog, an offer preview modal, auto-slug generation, inline date validation, and a load-more product picker.
 
 ### Products API (enhanced)
 

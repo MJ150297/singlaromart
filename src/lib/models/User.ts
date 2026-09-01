@@ -4,8 +4,26 @@ import mongoose, { Schema, model, models } from "mongoose";
 const UserSchema = new Schema(
   {
     name: { type: String, required: true },
-    email: { type: String, required: true, unique: true, index: true },
-    password: { type: String, required: true },
+    email: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    displayEmail: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    password: { type: String },
+    phone: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    phoneVerified: { type: Boolean, default: false },
     role: {
       type: String,
       enum: ["owner", "customer"],

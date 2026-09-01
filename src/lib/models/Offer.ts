@@ -31,6 +31,9 @@ const OfferSchema = new Schema(
     // Manual override — can force hide/show within the schedule window.
     isActive: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
+    // Audit trail — set from the authenticated owner session.
+    createdBy: { type: String },
+    updatedBy: { type: String },
   },
   {
     timestamps: true,

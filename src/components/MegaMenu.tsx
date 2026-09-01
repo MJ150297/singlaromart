@@ -55,10 +55,10 @@ function SubcategoryItem({
 export function MegaMenu() {
   const router = useRouter();
   const listRef = useRef<HTMLUListElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [translateX, setTranslateX] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const [categories, setCategories] = useState<Category[]>([]);
 
@@ -75,33 +75,32 @@ export function MegaMenu() {
 
   // ─── Scroll position check for arrows ──────────────────────────────────
   const checkScroll = useCallback(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const parent = el.parentElement;
-    if (!parent) return;
-    setCanScrollLeft(translateX < 0);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    setCanScrollLeft(container.scrollLeft > 4);
     setCanScrollRight(
-      Math.abs(translateX) < el.scrollWidth - parent.clientWidth - 4
+      container.scrollLeft < container.scrollWidth - container.clientWidth - 4,
     );
-  }, [translateX]);
+  }, []);
 
   useEffect(() => {
     checkScroll();
-  }, [checkScroll]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    container.addEventListener("scroll", checkScroll, { passive: true });
+    window.addEventListener("resize", checkScroll);
+    return () => {
+      container.removeEventListener("scroll", checkScroll);
+      window.removeEventListener("resize", checkScroll);
+    };
+  }, [checkScroll, categories]);
 
   // ─── Scroll by arrow buttons ───────────────────────────────────────────
   const scrollBy = (direction: "left" | "right") => {
-    const el = listRef.current;
-    if (!el) return;
-    const parent = el.parentElement;
-    if (!parent) return;
-    const scrollAmount = 200;
-    const maxTranslate = -(el.scrollWidth - parent.clientWidth);
-    const newTranslate =
-      direction === "left"
-        ? Math.min(translateX + scrollAmount, 0)
-        : Math.max(translateX - scrollAmount, maxTranslate);
-    setTranslateX(newTranslate);
+    scrollContainerRef.current?.scrollBy({
+      left: direction === "left" ? -200 : 200,
+      behavior: "smooth",
+    });
   };
 
   // ─── Close submenu on click outside ────────────────────────────────────
@@ -136,11 +135,13 @@ export function MegaMenu() {
         )}
 
         {/* Category List */}
-        <div className="overflow-hidden">
+        <div
+          ref={scrollContainerRef}
+          className="overflow-x-auto touch-pan-x scrollbar-hide"
+        >
           <ul
             ref={listRef}
-            className="flex gap-1 transition-transform duration-300 ease-in-out"
-            style={{ transform: `translate3d(${translateX}px, 0, 0)` }}
+            className="flex w-max min-w-full gap-1"
           >
             {categories.map((cat) => (
               <li

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { usePathname, useRouter } from "next/navigation";
 import { X, Minus, Plus, Trash2, ShoppingBag } from "lucide-react";
 import { useAppSelector, useAppDispatch } from "@/store";
 import {
@@ -25,7 +27,19 @@ function imageUrl(
 export function CartDrawer() {
   const dispatch = useAppDispatch();
   const { items, isOpen } = useAppSelector((state) => state.cart);
+  const { status } = useSession();
+  const router = useRouter();
+  const pathname = usePathname();
   const [showCheckout, setShowCheckout] = useState(false);
+
+  const handleCheckout = () => {
+    if (status === "unauthenticated") {
+      const callback = encodeURIComponent(pathname || "/");
+      router.push(`/login?callbackUrl=${callback}`);
+      return;
+    }
+    setShowCheckout(true);
+  };
 
   const subtotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
@@ -184,7 +198,7 @@ export function CartDrawer() {
                 Clear
               </button>
               <button
-                onClick={() => setShowCheckout(true)}
+                onClick={handleCheckout}
                 className="flex-1 px-4 py-2.5 text-xs font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors"
               >
                 Proceed to Checkout

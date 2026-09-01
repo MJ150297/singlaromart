@@ -25,6 +25,9 @@ export function CheckoutModal({ onClose }: { onClose: () => void }) {
   const form = useForm<CustomerDetails>({
     resolver: zodResolver(CustomerDetailsSchema),
     defaultValues: {
+      fullName: "",
+      phoneNumber: "",
+      address: "",
       deliverySlot: "Evening (4 PM - 8 PM)",
       paymentMethod: "Cash on Delivery",
     },
