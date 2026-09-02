@@ -10,3 +10,4 @@ export { FormControl } from "./form-control";
 export { FormMessage } from "./form-message";
 export { ImageUpload } from "./image-upload";
 export { cn } from "./utils";
+export { ToastProvider, useToast } from "./toast";

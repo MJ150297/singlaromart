@@ -9,6 +9,7 @@ import {
   AlertTriangle, CheckCircle2, XCircle, Clock, IndianRupee,
 } from "lucide-react";
 import { ORDER_STATUSES, PAYMENT_STATUSES, formatStatus, getStatusColor, getPaymentStatusColor } from "@/lib/orderStatus";
+import { useToast } from "@/components/ui/toast";
 
 interface OrderItem { productId: string; variantId?: string; quantity: number; unitPrice: number; name?: string; unit?: string; image?: unknown; }
 interface Customer { fullName: string; phoneNumber: string; address: string; landmark?: string; deliverySlot: string; paymentMethod: string; }
@@ -25,7 +26,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const { toast } = useToast();
   const [internalNotes, setInternalNotes] = useState("");
   const [deliveryNotes, setDeliveryNotes] = useState("");
 
@@ -49,8 +50,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
   }, [order]);
 
   const showToast = (type: "success" | "error", message: string) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 3000);
+    toast[type](message);
   };
 
   const handleStatusChange = async (newStatus: string) => {
@@ -189,12 +189,6 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
 
   return (
     <div className="space-y-6">
-      {toast && (
-        <div className={`fixed top-4 right-4 z-[100] px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}`}>
-          {toast.message}
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">

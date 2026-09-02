@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MapPin, PhoneCall, ChevronDown } from "lucide-react";
+import { ThemeToggle } from "./ThemeToggle";
 
 const DELIVERY_LOCATIONS = [
   { name: "Dehradun", time: "Today 6 PM" },
@@ -65,8 +66,11 @@ export function DeliveryBar() {
             | Standard Delivery (Same Day)
           </span>
         </div>
-        <div className="hidden md:flex items-center gap-1 text-emerald-200 font-medium">
-          <PhoneCall className="w-3 h-3" /> Support
+        <div className="flex items-center gap-1 text-emerald-200 font-medium">
+          <span className="hidden sm:inline-flex items-center gap-1">
+            <PhoneCall className="w-3 h-3" /> Support
+          </span>
+          <ThemeToggle className="text-white hover:bg-emerald-600 dark:text-white dark:hover:bg-emerald-600" />
         </div>
       </div>
     </div>

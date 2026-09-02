@@ -25,7 +25,10 @@ export default function OrderDetailPage() { return <RequireAuth><OrderDetailCont
 function OrderDetailContent() {
   const params = useParams<{ orderId: string }>(); const orderId = params.orderId; const dispatch = useAppDispatch();
   const [searchQuery, setSearchQuery] = useState(""); const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const { data: order, isLoading, error } = useSWR<Order | null>(orderId ? `/api/orders/my/${orderId}` : null, fetcher);
+  const { data: order, isLoading, error } = useSWR<Order | null>(orderId ? `/api/orders/my/${orderId}` : null, fetcher, {
+    refreshInterval: (data) =>
+      data && !["delivered", "cancelled"].includes(data.status) ? 15_000 : 0,
+  });
   if (isLoading) return <div className="min-h-screen bg-slate-50 dark:bg-slate-950"><DeliveryBar /><Header searchQuery={searchQuery} onSearchChange={setSearchQuery} /><div className="flex min-h-[50vh] items-center justify-center px-4 pt-4"><Loader2 className="h-8 w-8 animate-spin text-emerald-500" /></div></div>;
   if (error || !order) return <div className="min-h-screen bg-slate-50 dark:bg-slate-950"><DeliveryBar /><Header searchQuery={searchQuery} onSearchChange={setSearchQuery} /><div className="px-4 py-16 text-center dark:bg-slate-950"><Package className="mx-auto mb-3 h-12 w-12 text-slate-300" /><p className="text-sm text-slate-600">{error instanceof Error ? error.message : "Order not found"}</p><Link href="/orders" className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-emerald-600"><ArrowLeft className="h-4 w-4" /> Back to My Orders</Link></div></div>;
   const active = steps.findIndex((step) => step.key === order.status); const cancelled = order.status === "cancelled";

@@ -4,6 +4,8 @@ import "./globals.css";
 import { ReduxProvider } from "@/store/provider";
 import { AuthProvider } from "@/components/AuthProvider";
 import { SWRegister, InstallPrompt } from "@/components/PWA";
+import { ToastProvider } from "@/components/ui/toast";
+import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -53,7 +55,12 @@ export default function RootLayout({
       </head>
       <body className={`${inter.className} min-h-full flex flex-col`}>
         <ReduxProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <ToastProvider>
+            <AuthProvider>
+              {children}
+              <PushNotificationPrompt />
+            </AuthProvider>
+          </ToastProvider>
         </ReduxProvider>
         <SWRegister />
         <InstallPrompt />

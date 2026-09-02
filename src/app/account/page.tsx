@@ -30,6 +30,7 @@ import { CartDrawer } from "@/components/CartDrawer";
 import { CheckoutModal } from "@/components/CheckoutModal";
 import { OrderCard, Order } from "@/components/OrderCard";
 import { SkeletonOrderCard, SkeletonStats } from "@/components/Skeletons";
+import { NotificationSettings } from "@/components/NotificationSettings";
 import { generateWhatsAppHelpUrl } from "@/lib/whatsapp";
 
 type ApiResponse<T> = { success: boolean; data?: T; error?: string };
@@ -55,7 +56,12 @@ function AccountContent() {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session, update } = useSession();
-  const { data: orders, isLoading, error, mutate } = useSWR<Order[]>("/api/orders/my", fetcher);
+  const { data: orders, isLoading, error, mutate } = useSWR<Order[]>("/api/orders/my", fetcher, {
+    refreshInterval: (data) =>
+      data && data.some((order) => ["pending", "confirmed", "out_for_delivery"].includes(order.status))
+        ? 30_000
+        : 0,
+  });
   const [editing, setEditing] = useState(false); const [saving, setSaving] = useState(false); const [formError, setFormError] = useState("");
   const [name, setName] = useState(""); const [email, setEmail] = useState("");
   const [searchQuery, setSearchQuery] = useState(""); const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -177,6 +183,9 @@ return (
                 );
               })}
             </section>
+
+            {/* Notifications / settings */}
+            <NotificationSettings />
 
             {/* Recent orders */}
             <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">

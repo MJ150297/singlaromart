@@ -1,11 +1,12 @@
 "use client";
 
 import { ShoppingBag } from "lucide-react";
+import Link from "next/link";
 import { useAppSelector, useAppDispatch } from "@/store";
 import { toggleCartDrawer } from "@/store/slices/cartSlice";
-import { ThemeToggle } from "./ThemeToggle";
 import { SearchBar } from "./SearchBar";
 import { ProfileMenu } from "./ProfileMenu";
+import { NotificationBell } from "./NotificationBell";
 
 interface HeaderProps {
   searchQuery: string;
@@ -25,7 +26,7 @@ export function Header({ searchQuery, onSearchChange }: HeaderProps) {
     <header className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
         {/* Brand Logo */}
-        <div className="flex items-center gap-2 shrink-0">
+        <Link href="/" className="flex items-center gap-2 shrink-0" aria-label="Indiyano home">
           <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black text-xl flex items-center justify-center">
             I
           </div>
@@ -37,15 +38,13 @@ export function Header({ searchQuery, onSearchChange }: HeaderProps) {
               Food & Baverages
             </p>
           </div>
-        </div>
+        </Link>
 
         {/* Search Bar */}
         <SearchBar searchQuery={searchQuery} onSearchChange={onSearchChange} />
 
-        {/* Right side: Theme toggle, Cart & Profile */}
+        {/* Right side: Cart & Profile */}
         <div className="flex items-center gap-1 shrink-0">
-          <ThemeToggle />
-
           <button
             onClick={() => dispatch(toggleCartDrawer(true))}
             className="hidden md:flex items-center gap-2.5 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-full font-semibold text-xs transition-colors shadow-md"
@@ -56,6 +55,9 @@ export function Header({ searchQuery, onSearchChange }: HeaderProps) {
               ₹{totalAmount}
             </span>
           </button>
+
+          {/* Notification bell */}
+          <NotificationBell />
 
           {/* Profile menu - rightmost */}
           <ProfileMenu />

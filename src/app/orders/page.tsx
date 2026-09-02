@@ -20,7 +20,12 @@ const fetcher = async (url: string) => { const response = await fetch(url); cons
 
 export default function OrdersPage() { return <RequireAuth><OrdersContent /></RequireAuth>; }
 function OrdersContent() {
-  const { data: orders, isLoading, error, mutate } = useSWR<Order[]>("/api/orders/my", fetcher);
+  const { data: orders, isLoading, error, mutate } = useSWR<Order[]>("/api/orders/my", fetcher, {
+    refreshInterval: (data) =>
+      data && data.some((order) => ["pending", "confirmed", "out_for_delivery"].includes(order.status))
+        ? 30_000
+        : 0,
+  });
   const [query, setQuery] = useState(""); const [status, setStatus] = useState("all"); const [sort, setSort] = useState("newest");
   const [searchQuery, setSearchQuery] = useState(""); const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const list = useMemo(() => orders ?? [], [orders]);

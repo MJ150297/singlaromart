@@ -5,9 +5,10 @@ import useSWR from "swr";
 import {
   Plus, Pencil, Trash2, Search, X, Loader2, Download, Filter,
   CheckSquare, Square, AlertTriangle,
-  Copy, ChevronUp, ChevronDown, CheckCircle2, AlertCircle,
+  Copy, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { ImageUpload } from "@/components/ui";
+import { useToast } from "@/components/ui/toast";
 import { Pagination } from "@/components/Pagination";
 import type { CloudinaryImage } from "@/lib/schemas";
 import type { BannersSummary, InitialBanner } from "./page";
@@ -35,12 +36,6 @@ interface BannersResponse {
   page: number;
   limit: number;
   summary?: BannersSummary;
-}
-
-interface Toast {
-  id: number;
-  type: "success" | "error";
-  message: string;
 }
 
 const GRADIENTS = [
@@ -86,9 +81,8 @@ export default function BannersClient({ initialBanners, initialSummary }: { init
   const [bulkAction, setBulkAction] = useState("");
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  // ─── Toasts (multiple, top-right) ─────────────────────────────────────
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const toastId = useRef(0);
+  // ─── Toast helper (shared provider) ────────────────────────────────────
+  const { toast } = useToast();
 
   // ─── Per-row loading (toggle / reorder) ───────────────────────────────
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -154,13 +148,9 @@ export default function BannersClient({ initialBanners, initialSummary }: { init
     setForm((prev) => ({ ...prev, ...patch }));
   }
 
-  const pushToast = useCallback((type: Toast["type"], message: string) => {
-    const id = ++toastId.current;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
+  const pushToast = useCallback((type: "success" | "error", message: string) => {
+    toast[type](message);
+  }, [toast]);
 
   const clearFilters = () => {
     setSearch("");
@@ -418,26 +408,6 @@ export default function BannersClient({ initialBanners, initialSummary }: { init
 
   return (
     <div className="space-y-6">
-      {/* Toasts (top-right, multiple) */}
-      <div className="fixed top-4 right-4 z-[100] space-y-2">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${
-              t.type === "success" ? "bg-emerald-600" : "bg-rose-600"
-            }`}
-            role="status"
-          >
-            {t.type === "success" ? (
-              <CheckCircle2 className="w-4 h-4" />
-            ) : (
-              <AlertCircle className="w-4 h-4" />
-            )}
-            {t.message}
-          </div>
-        ))}
-      </div>
-
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

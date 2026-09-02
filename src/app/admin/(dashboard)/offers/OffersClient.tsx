@@ -13,8 +13,6 @@ import {
   ChevronUp,
   ChevronDown,
   Eye,
-  CheckCircle2,
-  AlertCircle,
   Filter,
   CheckSquare,
   Square,
@@ -22,6 +20,7 @@ import {
 import { ImageUpload } from "@/components/ui";
 import type { CloudinaryImage } from "@/lib/schemas";
 import { fetchApi } from "@/lib/swr";
+import { useToast } from "@/components/ui/toast";
 import { Pagination } from "@/components/Pagination";
 
 interface Offer {
@@ -79,12 +78,6 @@ interface OfferListResponse {
   total: number;
   page: number;
   limit: number;
-}
-
-interface Toast {
-  id: number;
-  type: "success" | "error";
-  message: string;
 }
 
 const emptyForm: OfferForm = {
@@ -204,9 +197,8 @@ export default function OffersClient({ initialOffers }: { initialOffers: Offer[]
   const [deleteTarget, setDeleteTarget] = useState<Offer | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // ── Toasts ────────────────────────────────────────────────────────────────
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const toastId = useRef(0);
+  // ── Toast helper (shared provider) ──────────────────────────────────────
+  const { toast } = useToast();
 
   // ── Per-row loading (toggle / reorder) ────────────────────────────────────
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -259,13 +251,9 @@ export default function OffersClient({ initialOffers }: { initialOffers: Offer[]
   }, [form.startsAt, form.endsAt]);
 
   // Toast helper
-  const pushToast = useCallback((type: Toast["type"], message: string) => {
-    const id = ++toastId.current;
-    setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
-  }, []);
+  const pushToast = useCallback((type: "success" | "error", message: string) => {
+    toast[type](message);
+  }, [toast]);
 
   // ── SWR: offers list (paginated) ──────────────────────────────────────────
   const offersKey = `/admin/offers?page=${page}&limit=${limit}&search=${encodeURIComponent(
@@ -717,26 +705,6 @@ export default function OffersClient({ initialOffers }: { initialOffers: Offer[]
 
   return (
     <div className="space-y-6">
-      {/* Toasts */}
-      <div className="fixed top-4 right-4 z-[100] space-y-2">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white ${
-              t.type === "success" ? "bg-emerald-600" : "bg-rose-600"
-            }`}
-            role="status"
-          >
-            {t.type === "success" ? (
-              <CheckCircle2 className="w-4 h-4" />
-            ) : (
-              <AlertCircle className="w-4 h-4" />
-            )}
-            {t.message}
-          </div>
-        ))}
-      </div>
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

@@ -9,6 +9,7 @@ import {
   Filter, RefreshCw, AlertTriangle,
 } from "lucide-react";
 import { ORDER_STATUSES, PAYMENT_STATUSES, formatStatus, getStatusColor, getPaymentStatusColor } from "@/lib/orderStatus";
+import { useToast } from "@/components/ui/toast";
 import { Pagination } from "@/components/Pagination";
 
 interface OrderItem { productId: string; variantId?: string; quantity: number; unitPrice: number; name?: string; unit?: string; image?: unknown; }
@@ -46,7 +47,7 @@ export default function OrdersClient() {
   const [selected, setSelected] = useState<string[]>([]);
   const [bulkStatus, setBulkStatus] = useState("");
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const { toast } = useToast();
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
@@ -84,9 +85,8 @@ export default function OrdersClient() {
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
   const showToast = useCallback((type: "success" | "error", message: string) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
+    toast[type](message);
+  }, [toast]);
 
   const clearFilters = () => {
     setSearch(""); setStatusFilter("all"); setPaymentStatusFilter("all");
@@ -167,12 +167,6 @@ export default function OrdersClient() {
 
   return (
     <div className="space-y-6">
-      {toast && (
-        <div className={`fixed top-4 right-4 z-[100] px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${toast.type === "success" ? "bg-emerald-600 text-white" : "bg-rose-600 text-white"}`}>
-          {toast.message}
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

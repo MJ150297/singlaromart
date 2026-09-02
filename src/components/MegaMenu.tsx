@@ -137,7 +137,7 @@ export function MegaMenu() {
         {/* Category List */}
         <div
           ref={scrollContainerRef}
-          className="overflow-x-auto touch-pan-x scrollbar-hide"
+          className="overflow-x-auto touch-pan-x scrollbar-none"
         >
           <ul
             ref={listRef}
