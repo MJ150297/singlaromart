@@ -1,4 +1,7 @@
-const CACHE_NAME = "indiyano-v1";
+// Service-worker cache name and notification key are generic ("site") — they
+// only need internal consistency within a deployment and the SW can't read
+// environment variables at runtime. Bump the version when static assets change.
+const CACHE_NAME = "site-v1";
 const STATIC_ASSETS = [
   "/",
   "/manifest.webmanifest",
@@ -98,7 +101,7 @@ self.addEventListener("push", function (event) {
       vibrate: [100, 50, 100],
       data: {
         dateOfArrival: Date.now(),
-        primaryKey: "indiyano",
+        primaryKey: "site",
         url: data.url || "/",
       },
     };

@@ -5,6 +5,8 @@ import { connectToDatabase } from "@/lib/db/mongoose";
 import { Order } from "@/lib/models/Order";
 import { Notification } from "@/lib/models/Notification";
 import { sendPushToUser } from "@/lib/push";
+import { redeemCouponRedemption, releaseCouponRedemption } from "@/lib/pricing/validateCoupon";
+import { qualifyReferralForDeliveredOrder } from "@/lib/referrals";
 
 const VALID_STATUSES = ["pending", "confirmed", "out_for_delivery", "delivered", "cancelled"];
 const VALID_PAYMENT_STATUSES = ["pending", "paid", "failed"];
@@ -116,6 +118,10 @@ export async function PATCH(
       update,
       { returnDocument: "after", runValidators: true }
     ).lean();
+
+    if (statusChanged === "delivered") await redeemCouponRedemption(id);
+    if (statusChanged === "cancelled") await releaseCouponRedemption(id);
+    if (statusChanged === "delivered" && existing.userId) await qualifyReferralForDeliveredOrder(existing.userId, id);
 
     // Notify the customer (in-app notification + Web Push) when the order
     // status changes. Only registered users (order.userId) receive these.

@@ -3,6 +3,7 @@ import { connectToDatabase } from "@/lib/db/mongoose";
 import { Offer } from "@/lib/models/Offer";
 import { Product, ProductDocument } from "@/lib/models/Product";
 import { getErrorMessage } from "@/lib/errors";
+import { matchesOfferTag } from "@/lib/offerMatching";
 
 export async function GET(
   _request: Request,
@@ -23,13 +24,15 @@ export async function GET(
     let products: ProductDocument[] = [];
 
     if (offer.type === "tag" && offer.tag) {
-      const tag = String(offer.tag).toLowerCase();
-      products = await Product.find({
-        isPublished: true,
-        tags: { $regex: new RegExp(`^${tag}$`, "i") },
-      })
-        .sort({ createdAt: -1 })
-        .lean();
+      const productsCursor = await Product.find({ isPublished: true }).lean();
+      products = productsCursor.filter((product) =>
+        matchesOfferTag(String(offer.tag), product.tags)
+      );
+      products.sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      });
     } else if (offer.type === "manual" && Array.isArray(offer.productIds)) {
       const ids: string[] = (offer.productIds as string[]).filter(Boolean);
       products = await Product.find({

@@ -19,16 +19,21 @@ cloudinary.config({
 
 // ─── Folder structure ─────────────────────────────────────────────────────────
 // Enterprise folder layout on Cloudinary:
-//   indiyano/products/       — product main + gallery images
-//   indiyano/banners/        — hero carousel banners
-//   indiyano/categories/     — category main images
-//   indiyano/subcategories/  — subcategory images
+//   <prefix>/products/       — product main + gallery images
+//   <prefix>/banners/        — hero carousel banners
+//   <prefix>/categories/     — category main images
+//   <prefix>/subcategories/  — subcategory images
+// The prefix is env-driven (server-only) so each business stores its images
+// under its own Cloudinary folder. The default stays "indiyano" for backward
+// compatibility with existing uploads — old public_ids remain valid.
+const CLOUDINARY_FOLDER_PREFIX = process.env.CLOUDINARY_FOLDER_PREFIX || "indiyano";
+
 export const CLOUDINARY_FOLDERS = {
-  products: "indiyano/products",
-  banners: "indiyano/banners",
-  categories: "indiyano/categories",
-  subcategories: "indiyano/subcategories",
-  offers: "indiyano/offers",
+  products: `${CLOUDINARY_FOLDER_PREFIX}/products`,
+  banners: `${CLOUDINARY_FOLDER_PREFIX}/banners`,
+  categories: `${CLOUDINARY_FOLDER_PREFIX}/categories`,
+  subcategories: `${CLOUDINARY_FOLDER_PREFIX}/subcategories`,
+  offers: `${CLOUDINARY_FOLDER_PREFIX}/offers`,
 } as const;
 
 export type CloudinaryFolder = keyof typeof CLOUDINARY_FOLDERS;

@@ -1,13 +1,12 @@
 import { CartItem } from "@/store/slices/cartSlice";
 import { CustomerDetails } from "./schemas";
-
-const WHATSAPP_BUSINESS_NUMBER = "919876543210"; // Replace with store WhatsApp number
+import { site } from "./site";
 
 export function generateWhatsAppHelpUrl(orderId?: string): string {
   const message = orderId
-    ? `Hi Indiyano! I need help with my order ${orderId}.`
-    : "Hi Indiyano! I need help with my order.";
-  return `https://wa.me/${WHATSAPP_BUSINESS_NUMBER}?text=${encodeURIComponent(message)}`;
+    ? `Hi ${site.name}! I need help with my order ${orderId}.`
+    : `Hi ${site.name}! I need help with my order.`;
+  return `https://wa.me/${site.whatsappNumber}?text=${encodeURIComponent(message)}`;
 }
 
 export function generateWhatsAppOrderUrl(
@@ -28,7 +27,7 @@ export function generateWhatsAppOrderUrl(
     )
     .join("\n");
 
-  const message = `🛒 *NEW ORDER - Indiyano Food & Baverages*
+  const message = `🛒 *NEW ORDER - ${site.fullName}*
 ----------------------------------------
 👤 *Customer Information:*
 *Name:* ${customer.fullName}
@@ -47,5 +46,5 @@ ${itemListFormatted}
 _Please confirm my order and share delivery timing._`;
 
   const encodedMessage = encodeURIComponent(message);
-  return `https://wa.me/${WHATSAPP_BUSINESS_NUMBER}?text=${encodedMessage}`;
+  return `https://wa.me/${site.whatsappNumber}?text=${encodedMessage}`;
 }

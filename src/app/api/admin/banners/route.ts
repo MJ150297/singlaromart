@@ -98,8 +98,13 @@ export async function POST(request: Request) {
       data.id = `banner-${String(count + 1).padStart(3, "0")}`;
     }
 
-    // Normalize fields
-    if (data.order !== undefined) data.order = Number(data.order);
+    // Give banners without an explicit order a stable position after existing banners.
+    if (data.order === undefined) {
+      const last = await Banner.findOne().sort({ order: -1 }).select({ order: 1 }).lean();
+      data.order = Number(last?.order ?? -1) + 1;
+    } else {
+      data.order = Number(data.order);
+    }
 
     const banner = await Banner.create(data);
 
@@ -135,7 +140,11 @@ function buildQuery(params: Record<string, string>): Record<string, unknown> {
 function buildSort(params: Record<string, string>): Record<string, 1 | -1> {
   const sortBy = params.sortBy && VALID_SORT_FIELDS.includes(params.sortBy) ? params.sortBy : "order";
   const sortOrder = params.sortOrder && VALID_SORT_ORDERS.includes(params.sortOrder) ? params.sortOrder : "asc";
-  return { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+  const direction = sortOrder === "asc" ? 1 : -1;
+  // Make equal display orders deterministic instead of letting MongoDB choose.
+  return sortBy === "order"
+    ? { order: direction, createdAt: 1 }
+    : { [sortBy]: direction, order: 1 };
 }
 
 function computeSummary(banners: Array<{ isActive?: boolean }>) {

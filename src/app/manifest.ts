@@ -1,10 +1,15 @@
 import type { MetadataRoute } from "next";
+import { site } from "@/lib/site";
 
 export default function manifest(): MetadataRoute.Manifest {
+  // short_name should stay compact (12 chars) for app labels under icons.
+  const shortName =
+    site.name.length > 12 ? site.name.slice(0, 12) : site.name;
+
   return {
-    name: "Indiyano Food & Baverages | Express Grocery Store",
-    short_name: "Indiyano",
-    description: "Fresh groceries and beverages delivered straight to your home.",
+    name: `${site.fullName} | Express Grocery Store`,
+    short_name: shortName,
+    description: site.description,
     start_url: "/",
     display: "standalone",
     background_color: "#f8fafc",

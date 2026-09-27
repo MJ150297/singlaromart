@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { X, Share, Plus } from "lucide-react";
+import { site } from "@/lib/site";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -41,7 +42,7 @@ export function InstallPrompt() {
   const [dismissed, setDismissed] = useState(
     () =>
       typeof window !== "undefined" &&
-      !!localStorage.getItem("indiyano_install_dismissed")
+      !!localStorage.getItem(`${site.storageKeyPrefix}_install_dismissed`)
   );
 
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
@@ -80,7 +81,7 @@ export function InstallPrompt() {
     const handleAppInstalled = () => {
       setShowPrompt(false);
       setDeferredPrompt(null);
-      localStorage.setItem("indiyano_install_dismissed", "true");
+      localStorage.setItem(`${site.storageKeyPrefix}_install_dismissed`, "true");
     };
 
     window.addEventListener("appinstalled", handleAppInstalled);
@@ -96,14 +97,14 @@ export function InstallPrompt() {
       }
       setDeferredPrompt(null);
       setShowPrompt(false);
-      localStorage.setItem("indiyano_install_dismissed", "true");
+      localStorage.setItem(`${site.storageKeyPrefix}_install_dismissed`, "true");
     }
   };
 
   const handleDismiss = () => {
     setShowPrompt(false);
     setDismissed(true);
-    localStorage.setItem("indiyano_install_dismissed", "true");
+    localStorage.setItem(`${site.storageKeyPrefix}_install_dismissed`, "true");
   };
 
   if (isStandalone || !showPrompt || dismissed) {
@@ -116,11 +117,11 @@ export function InstallPrompt() {
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black text-lg flex items-center justify-center shrink-0">
-              I
+              {site.logoInitial}
             </div>
             <div>
               <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
-                Install Indiyano
+                Install {site.name}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Get the app for a faster shopping experience

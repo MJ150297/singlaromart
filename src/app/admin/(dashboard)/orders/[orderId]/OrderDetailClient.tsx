@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { ORDER_STATUSES, PAYMENT_STATUSES, formatStatus, getStatusColor, getPaymentStatusColor } from "@/lib/orderStatus";
 import { useToast } from "@/components/ui/toast";
+import { site } from "@/lib/site";
 
 interface OrderItem { productId: string; variantId?: string; quantity: number; unitPrice: number; name?: string; unit?: string; image?: unknown; }
 interface Customer { fullName: string; phoneNumber: string; address: string; landmark?: string; deliverySlot: string; paymentMethod: string; }
@@ -205,7 +206,7 @@ export default function OrderDetailClient({ orderId }: { orderId: string }) {
             <Printer className="w-4 h-4" /> Print
           </button>
           <a
-            href={`https://wa.me/${order.customer?.phoneNumber}?text=${encodeURIComponent(`Hi ${order.customer?.fullName}, regarding your order ${order.orderId} from Indiyano.`)}`}
+            href={`https://wa.me/${order.customer?.phoneNumber}?text=${encodeURIComponent(`Hi ${order.customer?.fullName}, regarding your order ${order.orderId} from ${site.name}.`)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"

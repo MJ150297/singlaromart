@@ -3,6 +3,7 @@ import { TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
 import { persistStore, persistReducer } from "redux-persist";
 import createWebStorage from "redux-persist/lib/storage/createWebStorage";
 import cartReducer from "./slices/cartSlice";
+import { site } from "@/lib/site";
 
 const rootReducer = combineReducers({
   cart: cartReducer,
@@ -26,7 +27,8 @@ const storage =
     : createNoopStorage();
 
 const persistConfig = {
-  key: "indiyano_cart_v1",
+  // Prefix isolates persisted cart state per business (see site.storageKeyPrefix).
+  key: `${site.storageKeyPrefix}_cart_v1`,
   storage,
   whitelist: ["cart"],
 };

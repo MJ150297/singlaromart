@@ -1,20 +1,11 @@
-import { NextResponse } from "next/server";
 import { getErrorMessage } from "@/lib/errors";
-import { z, ZodError } from "zod";
+import { ZodError } from "zod";
 import { auth } from "@/auth";
-import { createOrder } from "@/lib/orders/createOrder";
-import { CustomerDetailsSchema } from "@/lib/schemas";
-
-const OrderItemSchema = z.object({
-  productId: z.string(),
-  variantId: z.string().optional(),
-  quantity: z.number().int().positive(),
-});
-
-const CreateOrderSchema = z.object({
-  customer: CustomerDetailsSchema,
-  items: z.array(OrderItemSchema).min(1),
-});
+import {
+  CreateOrderSchema,
+  PricingRejectionError,
+  createOrder,
+} from "@/lib/orders/createOrder";
 
 export async function POST(req: Request) {
   try {
@@ -29,12 +20,18 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const payload = CreateOrderSchema.parse(body);
-    const order = await createOrder(payload, userId);
+    const { order, replayed } = await createOrder(payload, userId);
     return new Response(JSON.stringify({ success: true, data: order }), {
-      status: 201,
+      status: replayed ? 200 : 201,
       headers: { "Content-Type": "application/json" },
     });
   } catch (err: unknown) {
+    if (err instanceof PricingRejectionError) {
+      return new Response(
+        JSON.stringify({ success: false, error: err.message, code: err.code }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
     if (err instanceof ZodError) {
       return new Response(JSON.stringify({ success: false, error: err.issues }), {
         status: 400,

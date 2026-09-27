@@ -7,6 +7,7 @@ import { toggleCartDrawer } from "@/store/slices/cartSlice";
 import { SearchBar } from "./SearchBar";
 import { ProfileMenu } from "./ProfileMenu";
 import { NotificationBell } from "./NotificationBell";
+import { site } from "@/lib/site";
 
 interface HeaderProps {
   searchQuery: string;
@@ -26,16 +27,16 @@ export function Header({ searchQuery, onSearchChange }: HeaderProps) {
     <header className="sticky top-0 z-40 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm">
       <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
         {/* Brand Logo */}
-        <Link href="/" className="flex items-center gap-2 shrink-0" aria-label="Indiyano home">
+        <Link href="/" className="flex items-center gap-2 shrink-0" aria-label={`${site.name} home`}>
           <div className="w-10 h-10 rounded-full bg-emerald-600 text-white font-black text-xl flex items-center justify-center">
-            I
+            {site.logoInitial}
           </div>
           <div className="hidden sm:block">
             <h1 className="font-bold text-base leading-tight tracking-tight text-emerald-700 dark:text-emerald-400">
-              Indiyano
+              {site.name}
             </h1>
             <p className="text-[10px] text-slate-500 font-medium tracking-wide uppercase">
-              Food & Baverages
+              {site.tagline}
             </p>
           </div>
         </Link>

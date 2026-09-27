@@ -10,6 +10,8 @@ import {
 } from "@/lib/otp";
 import type { NextAuthConfig } from "next-auth";
 import type { JWT } from "@auth/core/jwt";
+import { site } from "@/lib/site";
+import { bindReferralCode, REFERRAL_COOKIE, readReferralCookieValue } from "@/lib/referrals";
 
 // Rate limit: 5 login attempts per 15 minutes per IP
 const LOGIN_LIMIT = 5;
@@ -137,6 +139,10 @@ export const authConfig: NextAuthConfig = {
               );
             }
 
+            const referralCookie = (request as unknown as Request | undefined)?.headers.get("cookie")?.match(new RegExp(`${REFERRAL_COOKIE}=([^;]+)`))?.[1];
+            const referralCode = readReferralCookieValue(referralCookie);
+            if (referralCode) await bindReferralCode(referralCode, String((user as { _id: unknown })._id));
+
             return {
               id: String((user as { _id: unknown })._id),
               name: (user as UserDocument).name as string,
@@ -239,7 +245,7 @@ export const authConfig: NextAuthConfig = {
   },
   cookies: {
     sessionToken: {
-      name: "indiyano.session-token",
+      name: `${site.storageKeyPrefix}.session-token`,
       options: {
         httpOnly: true,
         sameSite: "lax",

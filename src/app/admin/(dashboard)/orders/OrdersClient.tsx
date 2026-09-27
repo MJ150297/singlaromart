@@ -11,6 +11,7 @@ import {
 import { ORDER_STATUSES, PAYMENT_STATUSES, formatStatus, getStatusColor, getPaymentStatusColor } from "@/lib/orderStatus";
 import { useToast } from "@/components/ui/toast";
 import { Pagination } from "@/components/Pagination";
+import { site } from "@/lib/site";
 
 interface OrderItem { productId: string; variantId?: string; quantity: number; unitPrice: number; name?: string; unit?: string; image?: unknown; }
 interface Customer { fullName: string; phoneNumber: string; address: string; landmark?: string; deliverySlot: string; paymentMethod: string; }
@@ -387,7 +388,7 @@ export default function OrdersClient() {
                         <Link href={`/admin/orders/${order.orderId}`} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors" title="View details">
                           <Eye className="w-4 h-4" />
                         </Link>
-                        <a href={`https://wa.me/${order.customer?.phoneNumber}?text=${encodeURIComponent(`Hi ${order.customer?.fullName}, regarding your order ${order.orderId} from Indiyano.`)}`} target="_blank" rel="noopener noreferrer" className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors" title="Contact on WhatsApp">
+                        <a href={`https://wa.me/${order.customer?.phoneNumber}?text=${encodeURIComponent(`Hi ${order.customer?.fullName}, regarding your order ${order.orderId} from ${site.name}.`)}`} target="_blank" rel="noopener noreferrer" className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors" title="Contact on WhatsApp">
                           <MessageCircle className="w-4 h-4" />
                         </a>
                       </div>

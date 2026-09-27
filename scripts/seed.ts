@@ -1,6 +1,6 @@
 /**
- * Seed script — populates the `indiyano` database with sample categories,
- * products, banners, and offers.
+ * Seed script — populates the store database (MONGODB_URI) with sample
+ * categories, products, banners, and offers.
  *
  * Images are sourced from LoremFlickr (CC-licensed, keyword-based) and uploaded
  * to Cloudinary so they match the app's structured Cloudinary image format.
@@ -14,6 +14,7 @@ import { Category } from "@/lib/models/Category";
 import { Product } from "@/lib/models/Product";
 import { Banner } from "@/lib/models/Banner";
 import { Offer } from "@/lib/models/Offer";
+import { DeliveryFeeRule } from "@/lib/models/DeliveryFeeRule";
 import {
   uploadBufferToCloudinary,
   type CloudinaryFolder,
@@ -989,6 +990,42 @@ async function seedOffers(): Promise<{ inserted: number; skipped: number }> {
   return { inserted, skipped };
 }
 
+async function seedDeliveryFeeRules(): Promise<{ inserted: number; skipped: number }> {
+  // Default: free delivery storewide (no rules → ₹0). Seeded explicitly so the
+  // admin UI has a rule to edit when the store begins charging fees.
+  const rules = [
+    {
+      id: "dfr_global_free_default",
+      name: "Free delivery (default)",
+      appliesTo: { productIds: [], subcategoryIds: [], categoryIds: [], allProducts: true },
+      userEligibility: { userType: "all", minimumOrders: null },
+      deliverySlots: [],
+      feeType: "flat",
+      amount: 0,
+      minOrderAmount: null,
+      priority: 0,
+      isActive: true,
+      startsAt: null,
+      endsAt: null,
+    },
+  ];
+
+  let inserted = 0;
+  let skipped = 0;
+  for (const rule of rules) {
+    const exists = await DeliveryFeeRule.findOne({ id: rule.id });
+    if (exists) {
+      skipped++;
+      console.log(`  - Delivery fee ${rule.id} (${rule.name}): exists, skipping`);
+      continue;
+    }
+    await DeliveryFeeRule.create({ ...rule, createdBy: "seed", updatedBy: "seed" });
+    inserted++;
+    console.log(`  - Delivery fee ${rule.id} (${rule.name}): inserted`);
+  }
+  return { inserted, skipped };
+}
+
 async function main() {
   await connectToDatabase();
   console.log("🌱 Seeding database...\n");
@@ -1008,6 +1045,10 @@ async function main() {
   console.log("Offers:");
   const off = await seedOffers();
   console.log(`  → ${off.inserted} inserted, ${off.skipped} skipped\n`);
+
+  console.log("Delivery fees:");
+  const df = await seedDeliveryFeeRules();
+  console.log(`  → ${df.inserted} inserted, ${df.skipped} skipped\n`);
 
   console.log("✅ Seeding complete.");
   process.exit(0);

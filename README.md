@@ -123,7 +123,7 @@ Create `.env.local` with these keys:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:3000/api
-MONGODB_URI=mongodb://localhost:27017/indiyano
+MONGODB_URI=mongodb://localhost:27017/store
 NEXTAUTH_SECRET=your-secret-value
 NEXTAUTH_URL=http://localhost:3000
 ADMIN_SETUP_TOKEN=your-setup-token
@@ -132,6 +132,29 @@ CLOUDINARY_API_KEY=your-cloudinary-api-key
 CLOUDINARY_API_SECRET=your-cloudinary-api-secret
 NEXT_PUBLIC_WHATSAPP_NUMBER=919876543210
 ```
+
+### Dynamic Business Name (white-label)
+
+The project is not hardcoded to "Indiyano" — it reads its business identity from
+a single config module (`src/lib/site.ts`), driven entirely by environment
+variables. To deploy this same codebase for another business, just set these in
+`.env.local` and rebuild:
+
+```env
+NEXT_PUBLIC_BUSINESS_NAME=YourStore
+NEXT_PUBLIC_BUSINESS_TAGLINE=Fresh Groceries
+NEXT_PUBLIC_BUSINESS_DESCRIPTION=Groceries delivered to your door.
+NEXT_PUBLIC_BUSINESS_KEY=yourstore
+NEXT_PUBLIC_WHATSAPP_NUMBER=911234567890
+BUSINESS_SUPPORT_EMAIL=admin@yourstore.example
+# CLOUDINARY_FOLDER_PREFIX=yourstore   # server-only; new uploads only
+```
+
+Every value falls back to the original "Indiyano" defaults, so an install with
+no branding vars renders exactly as before. See `.env.local.example` for the full
+list with descriptions. The storage-key prefix (`NEXT_PUBLIC_BUSINESS_KEY`)
+isolates cart and push-notification state so different businesses deployed on
+the same origin never share data.
 
 ### Start the App
 

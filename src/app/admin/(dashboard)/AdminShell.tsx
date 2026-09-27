@@ -11,11 +11,20 @@ import {
   Tags,
   Image as ImageIcon,
   Megaphone,
+  Truck,
+  TicketPercent,
+  Gift,
+  RotateCcw,
   LogOut,
   Menu,
   X,
   ChevronRight,
+  ShieldAlert,
+  BarChart3,
+  Wallet,
 } from "lucide-react";
+
+import { site } from "@/lib/site";
 
 const navItems = [
   { href: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -24,6 +33,13 @@ const navItems = [
   { href: "/admin/categories", label: "Categories", icon: Tags },
   { href: "/admin/banners", label: "Banners", icon: ImageIcon },
   { href: "/admin/offers", label: "Offers", icon: Megaphone },
+  { href: "/admin/delivery-fees", label: "Delivery Fees", icon: Truck },
+  { href: "/admin/coupons", label: "Coupons", icon: TicketPercent },
+  { href: "/admin/referral-programs", label: "Referrals", icon: Gift },
+  { href: "/admin/refunds", label: "Refunds", icon: RotateCcw },
+  { href: "/admin/credits", label: "Credits", icon: Wallet },
+  { href: "/admin/promotion-reports", label: "Reports", icon: BarChart3 },
+  { href: "/admin/audit-events", label: "Audit", icon: ShieldAlert },
 ];
 
 export function AdminShell({
@@ -92,10 +108,10 @@ export function AdminShell({
           </button>
           <Link href="/admin/dashboard" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-emerald-600 text-white font-black text-sm flex items-center justify-center">
-              I
+              {site.logoInitial}
             </div>
             <span className="font-bold text-sm text-slate-900 dark:text-slate-100">
-              Indiyano Admin
+              {site.name} Admin
             </span>
           </Link>
         </div>

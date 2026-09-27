@@ -32,6 +32,7 @@ import { OrderCard, Order } from "@/components/OrderCard";
 import { SkeletonOrderCard, SkeletonStats } from "@/components/Skeletons";
 import { NotificationSettings } from "@/components/NotificationSettings";
 import { generateWhatsAppHelpUrl } from "@/lib/whatsapp";
+import { ReferralCreditsPanel } from "@/components/ReferralCreditsPanel";
 
 type ApiResponse<T> = { success: boolean; data?: T; error?: string };
 const fetcher = async (url: string) => { const response = await fetch(url); const body = await response.json() as ApiResponse<Order[]>; if (!response.ok || !body.success) throw new Error(body.error || "Unable to load orders"); return body.data ?? []; };
@@ -63,7 +64,7 @@ function AccountContent() {
         : 0,
   });
   const [editing, setEditing] = useState(false); const [saving, setSaving] = useState(false); const [formError, setFormError] = useState("");
-  const [name, setName] = useState(""); const [email, setEmail] = useState("");
+  const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [defaultAddress, setDefaultAddress] = useState("");
   const [searchQuery, setSearchQuery] = useState(""); const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const list = orders ?? []; const pending = list.filter((o) => ["pending", "confirmed", "out_for_delivery"].includes(o.status)).length; const delivered = list.filter((o) => o.status === "delivered").length; const spent = list.reduce((sum, o) => sum + o.totalAmount, 0);
   const stats = [
@@ -72,7 +73,7 @@ function AccountContent() {
     { label: "Delivered", value: delivered, Icon: CheckCircle2, accent: "text-teal-200" },
     { label: "Total Spent", value: `₹${spent.toLocaleString("en-IN")}`, Icon: IndianRupee, accent: "text-white" },
   ];
-  async function saveProfile(event: React.FormEvent) { event.preventDefault(); setSaving(true); setFormError(""); try { const response = await fetch("/api/account/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email }) }); const body = await response.json() as ApiResponse<{ name: string; email?: string | null }>; if (!response.ok || !body.success || !body.data) throw new Error(body.error || "Unable to update profile"); const updatedEmail = body.data.email ?? null; await update({ name: body.data.name, email: updatedEmail, displayEmail: updatedEmail }); setName(body.data.name); setEmail(updatedEmail || ""); setEditing(false); } catch (err) { setFormError(err instanceof Error ? err.message : "Unable to update profile"); } finally { setSaving(false); } }
+  async function saveProfile(event: React.FormEvent) { event.preventDefault(); setSaving(true); setFormError(""); try { const response = await fetch("/api/account/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, email, defaultAddress }) }); const body = await response.json() as ApiResponse<{ name: string; email?: string | null; defaultAddress?: string | null }>; if (!response.ok || !body.success || !body.data) throw new Error(body.error || "Unable to update profile"); const updatedEmail = body.data.email ?? null; await update({ name: body.data.name, email: updatedEmail, displayEmail: updatedEmail }); setName(body.data.name); setEmail(updatedEmail || ""); setDefaultAddress(body.data.defaultAddress || ""); setEditing(false); } catch (err) { setFormError(err instanceof Error ? err.message : "Unable to update profile"); } finally { setSaving(false); } }
   async function logout() { await signOut({ redirect: false }); router.push("/"); router.refresh(); }
 return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-24 md:pb-12 text-slate-900 dark:text-slate-100">
@@ -97,7 +98,7 @@ return (
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { setName(session?.user?.name || ""); setEmail(session?.user?.displayEmail || session?.user?.email || ""); setEditing(true); }}
+                onClick={() => { setName(session?.user?.name || ""); setEmail(session?.user?.displayEmail || session?.user?.email || ""); setDefaultAddress(""); void fetch("/api/account/profile").then(async (response) => { const body = await response.json() as ApiResponse<{ defaultAddress?: string | null }>; if (response.ok && body.success) setDefaultAddress(body.data?.defaultAddress || ""); }).catch(() => undefined); setEditing(true); }}
                 className="inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors"
               >
                 <Pencil className="h-4 w-4" /> Edit profile
@@ -187,6 +188,8 @@ return (
             {/* Notifications / settings */}
             <NotificationSettings />
 
+            <ReferralCreditsPanel />
+
             {/* Recent orders */}
             <section className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
               <div className="mb-4 flex items-center justify-between px-5 py-4">
@@ -226,7 +229,8 @@ return (
               <button type="button" onClick={() => setEditing(false)} className="rounded-lg p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"><X className="h-5 w-5" /></button>
             </div>
             <label className="mb-3 block text-sm font-medium">Name<input required minLength={3} value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
-            <label className="mb-4 block text-sm font-medium">Email <span className="font-normal text-slate-400">(optional)</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+            <label className="mb-3 block text-sm font-medium">Email <span className="font-normal text-slate-400">(optional)</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
+            <label className="mb-4 block text-sm font-medium">Default delivery address <span className="font-normal text-slate-400">(optional)</span><textarea value={defaultAddress} onChange={(e) => setDefaultAddress(e.target.value)} rows={3} placeholder="House/flat no., street, area, landmark" className="mt-1 w-full rounded-lg border border-slate-200 bg-transparent px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500" /></label>
             {formError && <p className="mb-3 text-sm text-rose-500">{formError}</p>}
             <div className="flex items-center gap-3">
               <button type="submit" disabled={saving} className="flex-1 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Saving…" : "Save changes"}</button>

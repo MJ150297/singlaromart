@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/auth/guard";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { Product } from "@/lib/models/Product";
+import { Category } from "@/lib/models/Category";
 import { getErrorMessage } from "@/lib/errors";
+import { normalizeCatalogLabels } from "@/lib/catalog-normalization";
 
 const VALID_SORT_FIELDS = ["createdAt", "name", "price", "stockQuantity", "updatedAt"];
 const VALID_SORT_ORDERS = ["asc", "desc"];
@@ -33,7 +35,9 @@ function slugify(value: string): string {
 
 function validationError(data: Record<string, unknown>): string | null {
   if (typeof data.name !== "string" || !data.name.trim()) return "Product name is required";
+  if (typeof data.categoryId !== "string" || !data.categoryId.trim()) return "Category is required";
   if (typeof data.unit !== "string" || !data.unit.trim()) return "Unit is required";
+  if (!data.image || (typeof data.image === "string" && !data.image.trim())) return "A main product image is required";
   const numericFields = ["price", "originalPrice", "stockQuantity"] as const;
   for (const field of numericFields) {
     if (data[field] !== undefined && (!Number.isFinite(Number(data[field])) || Number(data[field]) < 0)) {
@@ -42,6 +46,9 @@ function validationError(data: Record<string, unknown>): string | null {
   }
   if (data.discountPercent !== undefined && (!Number.isFinite(Number(data.discountPercent)) || Number(data.discountPercent) < 0 || Number(data.discountPercent) > 100)) {
     return "Discount must be between 0 and 100";
+  }
+  if (data.inStock === true && Number(data.stockQuantity ?? 0) <= 0) {
+    return "A product cannot be marked In Stock with zero quantity";
   }
   if (Array.isArray(data.variants)) {
     for (const [index, variant] of data.variants.entries()) {
@@ -112,18 +119,25 @@ export async function POST(request: Request) {
     const errorMessage = validationError(data);
     if (errorMessage) return NextResponse.json({ success: false, error: errorMessage }, { status: 400 });
 
-    // Generate a unique id if not provided
-    if (!data.id) {
-      const count = await Product.countDocuments();
-      data.id = `ind-${String(count + 1).padStart(3, "0")}`;
+    const category = await Category.findOne({ id: String(data.categoryId) }).lean();
+    if (!category) return NextResponse.json({ success: false, error: "Selected category was not found" }, { status: 400 });
+    if (Array.isArray(data.subcategories)) {
+      const validNames = new Set((category.subcategories || []).map((sub: { name?: string }) => String(sub.name ?? "").trim().toLowerCase()));
+      const invalid = (data.subcategories as unknown[]).some((name) => !validNames.has(String(name).trim().toLowerCase()));
+      if (invalid) return NextResponse.json({ success: false, error: "One or more subcategories do not belong to the selected category" }, { status: 400 });
     }
+
+    data.tags = normalizeCatalogLabels(Array.isArray(data.tags) ? data.tags : []);
+    data.badges = normalizeCatalogLabels(Array.isArray(data.badges) ? data.badges : []);
 
     // Auto-generate slug from name if missing
     if (!data.slug || String(data.slug).trim() === "") {
       data.slug = slugify(String(data.name));
     }
 
-    const product = await Product.create(data);
+    const product = data.id
+      ? await Product.create(data)
+      : await createProductWithGeneratedId(data);
     return NextResponse.json({ success: true, data: product }, { status: 201 });
   } catch (err: unknown) {
     return NextResponse.json(
@@ -131,6 +145,31 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+/**
+ * Generate IDs from the highest existing numeric suffix instead of the number
+ * of documents. Deleting a product must not cause a later ID to be reused.
+ * Retrying duplicate-key errors also makes concurrent creates safe.
+ */
+async function createProductWithGeneratedId(data: Record<string, unknown>) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const [result] = await Product.aggregate<{ maxNumber: number }>([
+      { $match: { id: /^ind-\d+$/ } },
+      { $project: { number: { $toInt: { $substrBytes: ["$id", 4, { $subtract: [{ $strLenBytes: "$id" }, 4] }] } } } },
+      { $group: { _id: null, maxNumber: { $max: "$number" } } },
+    ]);
+
+    data.id = `ind-${String((result?.maxNumber ?? 0) + 1).padStart(3, "0")}`;
+
+    try {
+      return await Product.create(data);
+    } catch (err: unknown) {
+      if ((err as { code?: number }).code !== 11000 || attempt === 4) throw err;
+    }
+  }
+
+  throw new Error("Failed to generate a unique product ID");
 }
 
 function buildQuery(params: Record<string, string>): Record<string, unknown> {

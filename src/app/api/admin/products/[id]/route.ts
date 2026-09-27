@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/auth/guard";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { Product } from "@/lib/models/Product";
+import { Category } from "@/lib/models/Category";
 import { getErrorMessage } from "@/lib/errors";
+import { normalizeCatalogLabels } from "@/lib/catalog-normalization";
 import { collectPublicIds, deleteCloudinaryImages } from "@/lib/cloudinary";
 import type { CloudinaryImage } from "@/lib/schemas";
 
@@ -35,6 +37,7 @@ function validationError(data: Record<string, unknown>): string | null {
     if (data[field] !== undefined && (!Number.isFinite(Number(data[field])) || Number(data[field]) < 0)) return `${field} must be a non-negative number`;
   }
   if (data.discountPercent !== undefined && (!Number.isFinite(Number(data.discountPercent)) || Number(data.discountPercent) < 0 || Number(data.discountPercent) > 100)) return "Discount must be between 0 and 100";
+  if (data.inStock === true && Number(data.stockQuantity ?? 0) <= 0) return "A product cannot be marked In Stock with zero quantity";
   if (Array.isArray(data.variants)) {
     for (const [index, variant] of data.variants.entries()) {
       if (!variant || typeof variant !== "object") return `Variant ${index + 1} is invalid`;
@@ -62,6 +65,24 @@ export async function PUT(
     const data = pickAllowed(body);
     const errorMessage = validationError(data);
     if (errorMessage) return NextResponse.json({ success: false, error: errorMessage }, { status: 400 });
+
+    const existing = await Product.findOne({ id }).lean();
+    if (!existing) return NextResponse.json({ success: false, error: "Product not found" }, { status: 404 });
+    const categoryId = String(data.categoryId ?? existing.categoryId ?? "");
+    if (!categoryId) return NextResponse.json({ success: false, error: "Category is required" }, { status: 400 });
+    if (data.image === undefined && !existing.image) return NextResponse.json({ success: false, error: "A main product image is required" }, { status: 400 });
+    const category = await Category.findOne({ id: categoryId }).lean();
+    if (!category) return NextResponse.json({ success: false, error: "Selected category was not found" }, { status: 400 });
+    if (Array.isArray(data.subcategories)) {
+      const validNames = new Set((category.subcategories || []).map((sub: { name?: string }) => String(sub.name ?? "").trim().toLowerCase()));
+      const invalid = (data.subcategories as unknown[]).some((name) => !validNames.has(String(name).trim().toLowerCase()));
+      if (invalid) return NextResponse.json({ success: false, error: "One or more subcategories do not belong to the selected category" }, { status: 400 });
+    }
+    if (data.tags !== undefined) data.tags = normalizeCatalogLabels(Array.isArray(data.tags) ? data.tags : []);
+    if (data.badges !== undefined) data.badges = normalizeCatalogLabels(Array.isArray(data.badges) ? data.badges : []);
+    const resultingInStock = data.inStock === undefined ? Boolean(existing.inStock) : data.inStock === true;
+    const resultingQuantity = data.stockQuantity === undefined ? Number(existing.stockQuantity ?? 0) : Number(data.stockQuantity);
+    if (resultingInStock && resultingQuantity <= 0) return NextResponse.json({ success: false, error: "A product cannot be marked In Stock with zero quantity" }, { status: 400 });
 
     // Auto-generate slug from name if name is provided and slug is missing
     if (data.name && (!data.slug || String(data.slug).trim() === "")) {
@@ -102,6 +123,11 @@ export async function PATCH(
     const body = await request.json();
     await connectToDatabase();
 
+    const existing = await Product.findOne({ id }).lean();
+    if (!existing) {
+      return NextResponse.json({ success: false, error: "Product not found" }, { status: 404 });
+    }
+
     const update: Record<string, unknown> = {};
 
     if (typeof body.isPublished === "boolean") update.isPublished = body.isPublished;
@@ -114,6 +140,12 @@ export async function PATCH(
       update.stockQuantity = qty;
     }
 
+    const resultingInStock = update.inStock === undefined ? Boolean(existing.inStock) : update.inStock === true;
+    const resultingQuantity = update.stockQuantity === undefined ? Number(existing.stockQuantity ?? 0) : Number(update.stockQuantity);
+    if (resultingInStock && resultingQuantity <= 0) {
+      return NextResponse.json({ success: false, error: "A product cannot be marked In Stock with zero quantity" }, { status: 400 });
+    }
+
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ success: false, error: "No valid fields to update" }, { status: 400 });
     }
@@ -123,13 +155,6 @@ export async function PATCH(
       { $set: update },
       { returnDocument: "after", runValidators: true }
     ).lean();
-
-    if (!product) {
-      return NextResponse.json(
-        { success: false, error: "Product not found" },
-        { status: 404 }
-      );
-    }
 
     return NextResponse.json({ success: true, data: product });
   } catch (err: unknown) {

@@ -107,6 +107,11 @@ export default function CustomerLoginPage() {
         setError(messages[result.error] || "Login failed. Please try again.");
         return;
       }
+      const params = new URLSearchParams(window.location.search);
+      const refCode = params.get("ref");
+      if (refCode) {
+        await fetch("/api/referrals/bind", { method: "POST" }).catch(() => undefined);
+      }
       router.push("/");
       router.refresh();
     } catch {

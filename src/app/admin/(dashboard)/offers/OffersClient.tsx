@@ -1357,7 +1357,7 @@ export default function OffersClient({ initialOffers }: { initialOffers: Offer[]
                 )}
                 <p className="text-xs text-slate-400">
                   Leave dates empty for an always-visible offer (while active).
-                  The offer appears only between start and end dates.
+                  The offer appears only between start and end dates. Times use your browser timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}).
                 </p>
 
                 <div className="flex items-center gap-2">

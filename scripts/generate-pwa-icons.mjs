@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 /**
- * Generates PWA icons for Indiyano using pure Node.js (no external deps).
+ * Generates PWA icons using pure Node.js (no external deps).
  * Creates:
  *   - public/icon-192x192.png
  *   - public/icon-512x512.png
  *   - src/app/apple-icon.png (180x180)
+ *
+ * The default mark is the emerald circle with a white "I" letterform.
+ * A different business name (NEXT_PUBLIC_BUSINESS_NAME) is honored only as a
+ * label: arbitrary letterforms can't be rasterized without a font dependency,
+ * so for a rebrand you should replace these PNG assets with custom artwork.
  */
 import { deflateSync } from "node:zlib";
 import { writeFileSync, mkdirSync } from "node:fs";
@@ -135,11 +140,12 @@ function fillCircle(pixels, size, cx, cy, radius, r, g, b, a) {
 }
 
 /**
- * Draws the Indiyano icon:
+ * Draws the default store icon:
  * - Emerald (#059669) circle background
- * - White "I" letterform
+ * - White "I" letterform (the default brand mark; replace with custom artwork
+ *   for letterforms, per the script header)
  */
-function drawIndiyanoIcon(pixels, size) {
+function drawDefaultIcon(pixels, size) {
   const cx = size / 2;
   const cy = size / 2;
 
@@ -162,6 +168,8 @@ function drawIndiyanoIcon(pixels, size) {
 }
 
 // ─── Generate icons ───────────────────────────────────────────────────────
+const businessName = process.env.NEXT_PUBLIC_BUSINESS_NAME || "Indiyano";
+
 const outputs = [
   { path: join(root, "public", "icon-192x192.png"), size: 192 },
   { path: join(root, "public", "icon-512x512.png"), size: 512 },
@@ -170,9 +178,13 @@ const outputs = [
 
 for (const { path, size } of outputs) {
   mkdirSync(dirname(path), { recursive: true });
-  const png = encodePng(size, drawIndiyanoIcon);
+  const png = encodePng(size, drawDefaultIcon);
   writeFileSync(path, png);
   console.log(`✓ Generated ${path} (${size}x${size}, ${png.length} bytes)`);
 }
 
-console.log("All PWA icons generated successfully.");
+console.log(
+  `All PWA icons generated successfully for "${businessName}".\n` +
+    "Note: the mark is the default \"I\" letterform — for a different brand, " +
+    "replace public/icon-*.png and src/app/apple-icon.png with custom artwork."
+);

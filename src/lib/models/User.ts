@@ -23,7 +23,21 @@ const UserSchema = new Schema(
       sparse: true,
       index: true,
     },
+    defaultAddress: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    savedAddresses: [
+      {
+        id: { type: String, required: true },
+        label: { type: String, required: true },
+        fullAddress: { type: String, required: true },
+        isDefault: { type: Boolean, default: false },
+      },
+    ],
     phoneVerified: { type: Boolean, default: false },
+    creditBalance: { type: Number, default: 0, min: 0 },
     role: {
       type: String,
       enum: ["owner", "customer"],

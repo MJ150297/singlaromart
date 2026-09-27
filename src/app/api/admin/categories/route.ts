@@ -32,6 +32,33 @@ function pickAllowed(body: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
+function normalizeSubcategories(data: Record<string, unknown>): void {
+  if (!Array.isArray(data.subcategories)) return;
+
+  const categoryId = String(data.id || "").trim();
+  data.subcategories = (data.subcategories as Array<Record<string, unknown>>).map(
+    (sub, index) => {
+      const name = String(sub.name || "").trim();
+      const slug = String(sub.slug || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+
+      return {
+        ...sub,
+        id: String(sub.id || "").trim() || `sub-${categoryId}-${index + 1}`,
+        slug:
+          slug ||
+          name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, ""),
+      };
+    }
+  );
+}
+
 function validationError(data: Record<string, unknown>): string | null {
   if (typeof data.name !== "string" || !data.name.trim()) return "Category name is required";
   if (data.sortOrder !== undefined && (!Number.isFinite(Number(data.sortOrder)) || Number(data.sortOrder) < 0)) {
@@ -144,6 +171,10 @@ export async function POST(request: Request) {
       const count = await Category.countDocuments();
       data.id = `cat-${String(count + 1).padStart(3, "0")}`;
     }
+
+    // New subcategories do not have IDs in the form; generate stable IDs
+    // before Mongoose validates the required nested field.
+    normalizeSubcategories(data);
 
     const category = await Category.create(data);
 

@@ -11,6 +11,7 @@ import { ImageUpload } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { Pagination } from "@/components/Pagination";
 import type { CloudinaryImage } from "@/lib/schemas";
+import { normalizeCatalogLabels } from "@/lib/catalog-normalization";
 
 type ApiResponse<T> = { success: boolean; data: T; warnings?: string[]; error?: string };
 
@@ -161,7 +162,7 @@ export default function ProductsClient({ initialCategories, initialProducts }: {
   }
 
   function splitList(value: string): string[] {
-    return value.split(",").map((s) => s.trim()).filter(Boolean);
+    return normalizeCatalogLabels(value.split(","));
   }
 
   function joinList(values?: string[]): string {
@@ -283,6 +284,8 @@ export default function ProductsClient({ initialCategories, initialProducts }: {
 
     // Client-side validation
     if (!form.name.trim()) { setFormError("Product name is required"); setSaving(false); return; }
+    if (!form.category.trim()) { setFormError("Category is required"); setSaving(false); return; }
+    if (!imageUrl(form.image).trim()) { setFormError("A main product image is required"); setSaving(false); return; }
     if (!form.price.trim() || isNaN(Number(form.price)) || Number(form.price) < 0) { setFormError("A valid price is required"); setSaving(false); return; }
     if (!form.unit.trim()) { setFormError("Unit is required"); setSaving(false); return; }
     const price = Number(form.price);
@@ -293,6 +296,7 @@ export default function ProductsClient({ initialCategories, initialProducts }: {
     if (originalPrice !== undefined && (!Number.isFinite(originalPrice) || originalPrice < 0)) { setFormError("Original price must be a non-negative number"); setSaving(false); return; }
     if (discountPercent !== undefined && (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100)) { setFormError("Discount must be between 0 and 100"); setSaving(false); return; }
     if (!Number.isFinite(stockQuantity) || stockQuantity < 0) { setFormError("Stock quantity must be a non-negative number"); setSaving(false); return; }
+    if (form.inStock && stockQuantity <= 0) { setFormError("A product cannot be marked In Stock with zero quantity"); setSaving(false); return; }
     for (const [index, variant] of form.variants.entries()) {
       if (!variant.unit.trim()) { setFormError(`Variant ${index + 1} needs a unit`); setSaving(false); return; }
       const variantPrice = Number(variant.price);
@@ -828,7 +832,7 @@ export default function ProductsClient({ initialCategories, initialProducts }: {
                     </label>
                     <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                       <input type="checkbox" checked={form.isPublished} onChange={(e) => patchForm({ isPublished: e.target.checked })} className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-                      Published
+                      Published <span className="text-xs text-slate-400">(visible to customers)</span>
                     </label>
                   </div>
                 </div>

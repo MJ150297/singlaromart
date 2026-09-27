@@ -12,6 +12,7 @@ import {
   ChevronDown,
   UserCircle2,
 } from "lucide-react";
+import { site } from "@/lib/site";
 
 export function ProfileMenu() {
   const { data: session } = useSession();
@@ -171,7 +172,7 @@ export function ProfileMenu() {
                   <User className="w-6 h-6 text-emerald-700 dark:text-emerald-400" />
                 </div>
                 <p className="font-semibold text-slate-900 dark:text-slate-100">
-                  Welcome to Indiyano
+                  Welcome to {site.name}
                 </p>
                 <p className="text-xs text-slate-500 mt-1 mb-4">
                   Sign in for faster checkout and track your orders
@@ -185,7 +186,7 @@ export function ProfileMenu() {
                   Sign In
                 </Link>
                 <p className="text-xs text-slate-500 mt-3">
-                  New to Indiyano?{" "}
+                  New to {site.name}?{" "}
                   <Link
                     href="/login"
                     onClick={() => setOpen(false)}

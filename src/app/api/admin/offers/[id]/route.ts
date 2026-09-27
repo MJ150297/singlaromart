@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { requireOwner } from "@/lib/auth/guard";
 import { connectToDatabase } from "@/lib/db/mongoose";
 import { Offer } from "@/lib/models/Offer";
+import { Product } from "@/lib/models/Product";
 import { collectPublicIds, deleteCloudinaryImages } from "@/lib/cloudinary";
 import { getErrorMessage } from "@/lib/errors";
+import { normalizeCatalogTag } from "@/lib/catalog-normalization";
 import { checkRateLimit, getClientIp } from "@/lib/rateLimit";
 
 // Whitelist of fields allowed on update to prevent injection of arbitrary data
@@ -67,6 +69,11 @@ function validationError(data: Record<string, unknown>): string | null {
       return "End date must be on or after the start date";
     }
   }
+  for (const field of ["startsAt", "endsAt"] as const) {
+    if (data[field] !== undefined && isNaN(new Date(data[field] as string).getTime())) {
+      return `${field === "startsAt" ? "Start" : "End"} date is invalid`;
+    }
+  }
 
   return null;
 }
@@ -108,6 +115,18 @@ export async function PUT(
     const errorMessage = validationError(data);
     if (errorMessage) {
       return NextResponse.json({ success: false, error: errorMessage }, { status: 400 });
+    }
+
+    if (data.tag !== undefined) data.tag = normalizeCatalogTag(data.tag);
+    if (Array.isArray(data.productIds)) data.productIds = Array.from(new Set(data.productIds.map((productId) => String(productId).trim()).filter(Boolean)));
+    const effectiveType = String(data.type ?? existing.type);
+    const effectiveActive = data.isActive === undefined ? existing.isActive !== false : data.isActive === true;
+    if (effectiveActive && effectiveType === "manual") {
+      const ids = (Array.isArray(data.productIds) ? data.productIds : existing.productIds || []) as string[];
+      const publishedCount = await Product.countDocuments({ id: { $in: ids }, isPublished: true });
+      if (publishedCount !== ids.length) {
+        return NextResponse.json({ success: false, error: "Every product in an active manual offer must exist and be published" }, { status: 400 });
+      }
     }
 
     // Auto-generate slug from name if missing

@@ -6,17 +6,19 @@ import { AuthProvider } from "@/components/AuthProvider";
 import { SWRegister, InstallPrompt } from "@/components/PWA";
 import { ToastProvider } from "@/components/ui/toast";
 import { PushNotificationPrompt } from "@/components/PushNotificationPrompt";
+import { ScrollToTop } from "@/components/ScrollToTop";
+import { site } from "@/lib/site";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Indiyano Food & Baverages | Express Grocery Store",
-  description: "Fresh groceries and beverages delivered straight to your home.",
+  title: `${site.fullName} | Express Grocery Store`,
+  description: site.description,
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Indiyano",
+    title: site.name,
   },
   icons: {
     apple: "/apple-icon.png",
@@ -57,6 +59,7 @@ export default function RootLayout({
         <ReduxProvider>
           <ToastProvider>
             <AuthProvider>
+              <ScrollToTop />
               {children}
               <PushNotificationPrompt />
             </AuthProvider>

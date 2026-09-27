@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Mail, Lock, User as UserIcon, Loader2, KeyRound } from "lucide-react";
 import { AdminSignupSchema, type AdminSignupForm } from "@/lib/schemas";
 import { Button, Form, FormControl, FormField, FormItem, FormLabel, FormMessage, Input } from "@/components/ui";
+import { site } from "@/lib/site";
 
 interface SetupStatus {
   ownerExists: boolean;
@@ -105,7 +106,7 @@ export default function AdminSignupPage() {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-lg p-8">
           <div className="flex flex-col items-center mb-8">
             <div className="w-14 h-14 rounded-full bg-emerald-600 text-white font-black text-2xl flex items-center justify-center mb-3">
-              I
+              {site.logoInitial}
             </div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
               Create Owner Account

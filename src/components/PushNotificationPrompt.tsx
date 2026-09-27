@@ -5,8 +5,9 @@ import { Bell, BellRing, Loader2, X } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import { useToast } from "@/components/ui/toast";
+import { site } from "@/lib/site";
 
-const PROMPT_STORAGE_KEY = "indiyano-push-prompt-seen";
+const PROMPT_STORAGE_KEY = `${site.storageKeyPrefix}-push-prompt-seen`;
 
 /**
  * First-visit push opt-in prompt. The native permission dialog is opened only
